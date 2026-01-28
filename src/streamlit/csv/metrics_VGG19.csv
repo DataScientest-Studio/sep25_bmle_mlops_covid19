@@ -1,0 +1,6 @@
+" ";Précision;Recall;F1-score;Support
+Non-COVID;0.96;0.93;0.95;3466
+COVID;0.73;0.82;0.77;767
+accuracy;" ";" ";0.91;4233
+Macro avg;0.84;0.88;0.86;4233
+Weighted avg;0.92;0.91;0.91;4233
