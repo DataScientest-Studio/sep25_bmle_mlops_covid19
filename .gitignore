@@ -167,7 +167,7 @@ cython_debug/
 data/
 
 # models folder
-models/
+/models/
 
 # notebook perso
 notebooks/test_fonction.ipynb
