@@ -6,7 +6,7 @@ from keras.applications import DenseNet121, DenseNet201, EfficientNetB5, Efficie
 from keras.applications import EfficientNetV2B2, EfficientNetB0, EfficientNetB2, EfficientNetV2B3, VGG19, densenet, efficientnet_v2
 from keras.optimizers import Adam
 
-from src.features.tensor.base_model import Base_model
+from src.models.base_model import Base_model
 import tensorflow as tf
 
 class PatchExtractor(tf.keras.layers.Layer):
