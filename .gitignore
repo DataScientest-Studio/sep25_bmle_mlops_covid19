@@ -164,10 +164,13 @@ cython_debug/
 .vscode/
 
 # Data folder
-data/
+/data/
 
 # models folder
 /models/
 
 # notebook perso
 notebooks/test_fonction.ipynb
+
+# code secret
+secrets.yaml
