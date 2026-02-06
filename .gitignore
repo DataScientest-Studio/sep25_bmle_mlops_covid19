@@ -164,7 +164,7 @@ cython_debug/
 .vscode/
 
 # Data folder
-data/
+/data/
 
 # models folder
 /models/
