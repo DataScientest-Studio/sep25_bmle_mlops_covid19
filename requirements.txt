@@ -10,7 +10,5 @@ kaggle==1.7.4.5
 kagglehub==0.3.13
 streamlit==1.52.2
 boto3==1.42.42
-sqlalchemy==2.0.46
-dotenv==0.9.9
-asyncpg==0.31.0
+httpx==0.28.1
 
