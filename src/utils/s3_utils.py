@@ -4,6 +4,11 @@ import boto3
 from botocore.client import Config
 from datetime import datetime
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path().resolve()))
+from src.settings import S3Settings
+
 def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_root, s3_prefix="", output_csv="dataset.csv"):
     """
     Upload images and masks to Backblaze B2 S3 bucket and generate a CSV with URLs.
@@ -11,6 +16,8 @@ def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_r
     CSV format:
     image_url, mask_url, img_class, now, now
     """
+    BAKEBLAZE_URL = "s3.eu-central-003.backblazeb2.com"
+    
     class_type = "0"
     
     now = datetime.now()
@@ -18,7 +25,7 @@ def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_r
     # Connexion S3 compatible Backblaze
     s3 = boto3.client(
         "s3",
-        endpoint_url="https://s3.eu-central-003.backblazeb2.com",
+        endpoint_url=f"https://{BAKEBLAZE_URL}",
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         config=Config(signature_version='s3v4')
@@ -68,8 +75,8 @@ def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_r
                 print(e)
 
             # Générer les URLs publiques
-            image_url = f"https://{bucket_name}.s3.eu-central-003.backblazeb2.com/{image_s3_key}"
-            mask_url = f"https://{bucket_name}.s3.eu-central-003.backblazeb2.com/{mask_s3_key}"
+            image_url = f"https://{bucket_name}.{BAKEBLAZE_URL}/{image_s3_key}"
+            mask_url = f"https://{bucket_name}.{BAKEBLAZE_URL}/{mask_s3_key}"
 
             csv_rows.append([image_url, mask_url, class_type, now, now])
             print(f"Uploaded {filename} and added to CSV")
@@ -84,10 +91,15 @@ def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_r
 
 # Exemple d'utilisation
 if __name__ == "__main__":
+    
+    settings = S3Settings("secrets.yaml")
+    
+    bucket_name, access_key, secret_key = settings.s3_access
+
     upload_dataset_and_generate_csv(
-        bucket_name="mlops-liora-covid19",
-        access_key="00315d4f4eeb9d40000000001",
-        secret_key="K003cHU2uuu3kAJ+A/X0k60g6LoU4vs",
+        bucket_name=bucket_name,
+        access_key=access_key,
+        secret_key=secret_key,
         local_root="./data/COVID-19_Radiography_Dataset",
         s3_prefix="dataset",
         output_csv="dataset.csv"

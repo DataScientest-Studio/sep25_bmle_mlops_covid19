@@ -1,118 +1,66 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select, update as sql_update, delete as sql_delete
-from typing import Type, Any, Dict, List, Optional, AsyncIterator
+from typing import Any, Dict, Optional, AsyncIterator
 from contextlib import asynccontextmanager
-
+import httpx
 
 class DatabaseAccess:
     
-    def __init__(self, database_url: str, echo: bool = False):
-        self.engine = create_async_engine(
-            database_url,
-            echo=echo,
-            future=True,
-            pool_pre_ping=True,
-        )
-
-        self.SessionLocal = async_sessionmaker(
-            bind=self.engine,
-            class_=AsyncSession,
-            expire_on_commit=False,
-        )
-
-    # -------- Session --------
+    def __init__(self, api_url: str, api_key: str):
+        self.api_url = api_url.rstrip("/") + "/"  # s'assure qu'il y a un slash final
+        self.headers = {
+            "apikey": api_key,
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        self.client = httpx.AsyncClient(headers=self.headers)
 
     @asynccontextmanager
-    async def get_session(self) -> AsyncIterator[AsyncSession]:
-        async with self.SessionLocal() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
+    async def get_session(self) -> AsyncIterator[httpx.AsyncClient]:
+        """
+        Fournit un client HTTP asynchrone pour faire des requêtes à la Data API.
+        """
+        try:
+            yield self.client
+        finally:
+            await self.client.aclose()
 
     # -------- CREATE --------
 
-    async def insert(self, obj: Any) -> Any:
-        async with self.get_session() as session:
-            session.add(obj)
-            await session.flush()
-            await session.refresh(obj)
-            return obj
+    async def select(self, table: str, params: Optional[Dict[str, Any]] = None):
+        """
+        Récupérer des lignes d'une table.
+        """
+        url = f"{self.api_url}{table}"
+        async with self.get_session() as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
 
-    async def insert_many(self, objects: List[Any]) -> List[Any]:
-        async with self.get_session() as session:
-            session.add_all(objects)
-            await session.flush()
-            return objects
+    async def insert(self, table: str, data: Dict[str, Any]):
+        """
+        Insérer une ligne dans une table.
+        """
+        url = f"{self.api_url}{table}"
+        async with self.get_session() as client:
+            response = await client.post(url, json=data)
+            response.raise_for_status()
+            return response.json()
 
-    # -------- READ --------
+    async def update(self, table: str, data: Dict[str, Any], match: Dict[str, Any]):
+        """
+        Mettre à jour des lignes d'une table.
+        """
+        url = f"{self.api_url}{table}"
+        async with self.get_session() as client:
+            response = await client.patch(url, json=data, params=match)
+            response.raise_for_status()
+            return response.json()
 
-    async def get_by_id(self, model: Type, pk: Any) -> Optional[Any]:
-        async with self.get_session() as session:
-            return await session.get(model, pk)
-
-    async def list(
-        self,
-        model: Type,
-        filters = None,
-        limit = None,
-        offset = None,
-    ):
-        async with self.get_session() as session:
-            stmt = select(model)
-
-            if filters:
-                stmt = stmt.filter_by(**filters)
-            if limit:
-                stmt = stmt.limit(limit)
-            if offset:
-                stmt = stmt.offset(offset)
-
-            result = await session.execute(stmt)
-            return result.scalars().all()
-
-    async def first(self, model: Type, filters = None) -> Optional[Any]:
-        async with self.get_session() as session:
-            stmt = select(model)
-            if filters:
-                stmt = stmt.filter_by(**filters)
-
-            result = await session.execute(stmt)
-            return result.scalars().first()
-
-    # -------- UPDATE --------
-
-    async def update_by_id(
-        self,
-        model: Type,
-        pk: Any,
-        values: Dict,
-    ):
-        async with self.get_session() as session:
-            pk_col = model.__mapper__.primary_key[0]
-
-            stmt = (
-                sql_update(model)
-                .where(pk_col == pk)
-                .values(**values)
-            )
-
-            result = await session.execute(stmt)
-            
-            return result
-
-    # -------- DELETE --------
-
-    async def delete_by_id(self, model: Type, pk: Any):
-        async with self.get_session() as session:
-            pk_col = model.__mapper__.primary_key[0]
-
-            stmt = (
-                sql_delete(model)
-                .where(pk_col == pk)
-            )
-
-            result = await session.execute(stmt)
-            return result
+    async def delete(self, table: str, match: Dict[str, Any]):
+        """
+        Supprimer des lignes d'une table.
+        """
+        url = f"{self.api_url}{table}"
+        async with self.get_session() as client:
+            response = await client.delete(url, params=match)
+            response.raise_for_status()
+            return response.json()

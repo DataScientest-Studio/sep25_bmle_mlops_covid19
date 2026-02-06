@@ -1,27 +1,26 @@
 import sys
 from pathlib import Path
+from datetime import datetime
+
 sys.path.append(str(Path().resolve()))
 from src.data.database_access import DatabaseAccess
-from src.data.image_dataset import ImageDataset
-from src.settings import Settings
+from src.settings import DatabaseSettings
+
 
 
 async def get_parameters():
-    settings = Settings("secrets.yaml")
-    print(f"{settings.database_url = }")
-    db = DatabaseAccess(settings.database_url)
-    print(f"{db = }")
-    image = ImageDataset(
-        image_url="https://test",
-        mask_url="https://mask",
-        class_type="class_1",
-        injection_date=None,
-        created_at=None,
-    )
+    settings = DatabaseSettings("secrets.yaml")
+    url, key = settings.database_url
+    db = DatabaseAccess(api_url=url, api_key=key)
 
-    await db.insert(image)
-    
+    params = {"order": "validity_date.desc",
+            "limit": 1
+    }
+
+    param = await db.select("parameters", params=params)
+
+    return param
     
 import asyncio
-asyncio.run(get_parameters())
+print(asyncio.run(get_parameters()))
 

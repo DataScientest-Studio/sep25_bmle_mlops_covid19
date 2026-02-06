@@ -171,3 +171,6 @@ cython_debug/
 
 # notebook perso
 notebooks/test_fonction.ipynb
+
+# code secret
+secrets.yaml
