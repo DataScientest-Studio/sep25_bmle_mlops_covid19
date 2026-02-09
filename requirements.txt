@@ -11,4 +11,4 @@ kagglehub==0.3.13
 streamlit==1.52.2
 boto3==1.42.42
 httpx==0.28.1
-
+mlflow==3.9.0
