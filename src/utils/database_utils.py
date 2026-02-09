@@ -1,15 +1,16 @@
 import sys
 from pathlib import Path
-from datetime import datetime
 
-sys.path.append(str(Path().resolve()))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.data.database_access import DatabaseAccess
 from src.settings import DatabaseSettings
 
-
-
 async def get_parameters():
-    settings = DatabaseSettings("secrets.yaml")
+    
+    root = Path(__file__).resolve().parent.parent.parent
+    secrets_path = root / "secrets.yaml"
+
+    settings = DatabaseSettings(str(secrets_path))
     url, key = settings.database_url
     db = DatabaseAccess(api_url=url, api_key=key)
 
@@ -19,8 +20,17 @@ async def get_parameters():
 
     param = await db.select("parameters", params=params)
 
-    return param
+    return param[0]
+
+async def post_parameters(data):
+
+    root = Path(__file__).resolve().parent.parent.parent
+    secrets_path = root / "secrets.yaml"
     
-import asyncio
-print(asyncio.run(get_parameters()))
+    settings = DatabaseSettings(str(secrets_path))
+    url, key = settings.database_url
+    db = DatabaseAccess(api_url=url, api_key=key)
+
+    response = await db.insert("parameters", data=data)
+    
 
