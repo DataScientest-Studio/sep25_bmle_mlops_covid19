@@ -18,7 +18,12 @@ from keras import models, Model
 from keras.utils import image_dataset_from_directory
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, accuracy_score
-from IPython.display import display
+try:
+    from IPython.display import display
+except ModuleNotFoundError:
+    # Fallback for non-notebook environments (e.g., CI)
+    def display(*args, **kwargs):
+        return None
 from src.utils.image_utils import load_image, overlay_gradcam_on_gray, overlay_heatmap, show
 from keras import Sequential
 from keras.layers import RandomRotation, RandomFlip, RandomZoom
