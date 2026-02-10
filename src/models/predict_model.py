@@ -2,6 +2,9 @@ from pathlib import Path
 from typing import Dict, Any
 import numpy as np
 import tensorflow as tf
+import httpx
+
+from src.utils.db_dataset_utils import fetch_image_row_by_id
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 MODELS_DIR = BASE_DIR / "src" / "models"
@@ -55,6 +58,24 @@ def predict_from_bytes(image_bytes: bytes, model_path: Path | None = None) -> Di
 
 def predict_from_path(image_path: Path, model_path: Path | None = None) -> Dict[str, Any]:
     image_bytes = Path(image_path).read_bytes()
+    return predict_from_bytes(image_bytes, model_path=model_path)
+
+
+async def predict_from_db(
+    image_id: int,
+    model_path: Path | None = None,
+    table: str = "images_dataset",
+) -> Dict[str, Any]:
+    row = await fetch_image_row_by_id(image_id=image_id, table=table)
+    image_url = row.get("image_url")
+    if not image_url:
+        raise ValueError(f"No image_url found for id={image_id}")
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(image_url)
+        response.raise_for_status()
+        image_bytes = response.content
+
     return predict_from_bytes(image_bytes, model_path=model_path)
 
 
