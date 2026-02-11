@@ -3,7 +3,7 @@ from pathlib import Path
 
 class DatabaseSettings:
     
-    def __init__(self, secrets_path: str = "secrets.yaml"):
+    def __init__(self, secrets_path: str = "../secrets.yaml"):
         secrets_file = Path(secrets_path)
 
         if not secrets_file.exists():

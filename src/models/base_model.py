@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import os
-from pathlib import Path
 
 import cv2
 
@@ -18,15 +17,7 @@ from keras import models, Model
 from keras.utils import image_dataset_from_directory
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, accuracy_score
-try:
-    from IPython.display import display
-except ModuleNotFoundError:
-    # Fallback for non-notebook environments (e.g., CI)
-    def display(*args, **kwargs):
-        return None
 from src.utils.image_utils import load_image, overlay_gradcam_on_gray, overlay_heatmap, show
-from keras import Sequential
-from keras.layers import RandomRotation, RandomFlip, RandomZoom
 
 
 class Base_model(ABC):
@@ -50,23 +41,21 @@ class Base_model(ABC):
                  gray=False,
                  batch_size=32,
                  big_dataset=False,
-                 test_size=0.2,
+                 train_size=0.2,
                  random_state=42,
-                 oversampling=False,
-                 class_weight=None):
+                 oversampling=False):
 
         print("init ok")
         # Propriétés générales
         self.data_folder = data_folder
         self.save_model_folder = save_model_folder
-        self.model_name = model_name + ".keras"
+        self.model_name = model_name
         self.img_size = img_size
         self.batch_size = batch_size
         self.big_dataset = big_dataset
-        self.test_size = test_size
+        self.train_size = train_size
         self.random_state = random_state
         self.oversampling = oversampling
-        self.class_weight = class_weight
         
         # Images en nuance de gris?
         self.gray = gray
@@ -83,7 +72,9 @@ class Base_model(ABC):
         
         # predictions
         self.predictions = None
-        
+        self.metrics = None
+        self.nb_validation_data = 0
+        self.nb_training_data = 0
         # Initialisation du modèle
         self.model = self.build_model()
         
@@ -139,7 +130,7 @@ class Base_model(ABC):
             if self.gray:
                 train_ds = image_dataset_from_directory(
                     self.data_folder,
-                    validation_split=self.test_size,
+                    validation_split= 1 - self.train_size,
                     subset="training",
                     seed=self.random_state,
                     image_size=self.img_size,
@@ -151,7 +142,7 @@ class Base_model(ABC):
 
                 val_ds = image_dataset_from_directory(
                     self.data_folder,
-                    validation_split=self.test_size,
+                    validation_split= 1 - self.train_size,
                     subset="validation",
                     seed=self.random_state,
                     image_size=self.img_size,
@@ -163,7 +154,7 @@ class Base_model(ABC):
             else:
                 train_ds = image_dataset_from_directory(
                     self.data_folder,
-                    validation_split=self.test_size,
+                    validation_split=1 - self.train_size,
                     subset="training",
                     seed=self.random_state,
                     image_size=self.img_size,
@@ -174,7 +165,7 @@ class Base_model(ABC):
 
                 val_ds = image_dataset_from_directory(
                     self.data_folder,
-                    validation_split=self.test_size,
+                    validation_split=1 - self.train_size,
                     subset="validation",
                     seed=self.random_state,
                     image_size=self.img_size,
@@ -182,6 +173,9 @@ class Base_model(ABC):
                     label_mode="categorical",
                     shuffle=False
                 )
+                
+        self.nb_training_data = sum(1 for _ in train_ds.unbatch())
+        self.nb_validation_data = sum(1 for _ in val_ds.unbatch())
         
         # Optimisation performances
         if self.big_dataset:
@@ -208,37 +202,22 @@ class Base_model(ABC):
         """Entraine le modèle."""
 
         if self.callbacks == None:
-            if self.class_weight == None:
-                self.history = self.model.fit(
-                    self.train_gen,
-                    validation_data=self.test_gen, 
-                    epochs=epochs
-                )
-            else:
-                self.history = self.model.fit(
-                    self.train_gen,
-                    validation_data=self.test_gen, 
-                    epochs=epochs,
-                    class_weight=self.class_weight
-                )
+            self.history = self.model.fit(
+                self.train_gen,
+                validation_data=self.test_gen, 
+                epochs=epochs
+            )
+
         else:
-            if self.class_weight == None:
-                self.history = self.model.fit(
-                    self.train_gen,
-                    validation_data=self.test_gen,
-                    callbacks=self.callbacks, 
-                    epochs=epochs
-                )
-            else:
-                self.history = self.model.fit(
-                    self.train_gen,
-                    validation_data=self.test_gen,
-                    callbacks=self.callbacks, 
-                    epochs=epochs,
-                    class_weight=self.class_weight
-                )
+            self.history = self.model.fit(
+                self.train_gen,
+                validation_data=self.test_gen,
+                callbacks=self.callbacks, 
+                epochs=epochs
+            )
+
         
-        self.show_history()
+        #self.show_history()
         
     def show_history(self):
         """ affiche le graphe de l'history """
@@ -322,19 +301,16 @@ class Base_model(ABC):
         y_pred = np.argmax(self.predictions, axis=1)
 
         # --- Scores ---
+        classes = [0, 1]
         acc = accuracy_score(y_true, y_pred)
-        cm = pd.crosstab(y_true, y_pred, rownames=['Classe réelle'], colnames=['Classe prédite'])
+        cm = pd.crosstab(y_true, y_pred, dropna=False).reindex(index=classes, columns=classes, fill_value=0)
         report = classification_report(
             y_true, 
-            y_pred
+            y_pred,
+            output_dict=True
         )
 
-        print("Accuracy:", acc)
-        print("\nClass 0 = Non COVID, class 1 = COVID")
-        display("Matrice de confusion:", cm)
-        print("\nRapport de classification:\n", report)
-
-        return {
+        self.metrics = {
             "accuracy": acc,
             "confusion_matrix": cm,
             "classification_report": report
@@ -343,10 +319,6 @@ class Base_model(ABC):
     # ----------------------------------------------------------------------
     # Sauvegarde / Chargement
     # ----------------------------------------------------------------------
-    def save(self):
-        output_path = self.save_model_folder / self.model_name
-        self.model.save(output_path)
-
     def load(self, show_summary=False):
         model_path = self.save_model_folder / self.model_name
         self.model = models.load_model(model_path)

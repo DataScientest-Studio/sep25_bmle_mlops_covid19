@@ -87,27 +87,41 @@ class EfficientNetv2B0_model_augmented(Base_model):
                     gray=False,
                     batch_size=32,
                     big_dataset=False,
-                    test_size=0.2,
+                    train_size=0.2,
                     random_state=42,
                     oversampling=False,
-                    class_weight=None,
-                    nb_layer_to_freeze=0):
+                    nb_layer_to_freeze=0,
+                    es_patience=5,
+                    es_min_delta=0.01,
+                    es_mode=min,
+                    es_monitor="loss",
+                    rlrop_monitor="loss",
+                    rlrop_patience=3,
+                    rlrop_min_delta=0.01,
+                    rlrop_factor=0.1,
+                    rlrop_cooldown=4,
+                    loss_cat="loss",
+                    optimizer_name="adam",
+                    metrics=["accuracy"]):
             
             self.nb_layer_to_freeze = nb_layer_to_freeze
-            super().__init__(data_folder, save_model_folder, model_name, img_size, gray, batch_size, big_dataset, test_size, random_state, oversampling, class_weight)
+            self.loss_cat = loss_cat
+            self.optimizer_name = optimizer_name
+            self.metrics = metrics
+            super().__init__(data_folder, save_model_folder, model_name, img_size, gray, batch_size, big_dataset, train_size, random_state, oversampling)
             
             early_stopping = EarlyStopping(
-                                    patience=5, 
-                                    min_delta=1, 
-                                    mode='min',
-                                    monitor='loss')
+                                    patience=es_patience, 
+                                    min_delta=es_min_delta, 
+                                    mode=es_mode,
+                                    monitor=es_monitor)
 
             reduce_learning_rate = ReduceLROnPlateau(
-                                        monitor="loss",
-                                        patience=3,
-                                        min_delta=0.01,
-                                        factor=0.1, 
-                                        cooldown=4)
+                                        monitor=rlrop_monitor,
+                                        patience=rlrop_patience,
+                                        min_delta=rlrop_min_delta,
+                                        factor=rlrop_factor, 
+                                        cooldown=rlrop_cooldown)
             
             self.callbacks = [early_stopping, reduce_learning_rate]
             
@@ -149,9 +163,9 @@ class EfficientNetv2B0_model_augmented(Base_model):
 
 
             model.compile(
-                optimizer=str(Adam(learning_rate=1e-4)),
-                loss='categorical_crossentropy',
-                metrics=['accuracy']
+                optimizer=self.optimizer_name,
+                loss=self.loss_cat,
+                metrics=self.metrics
             )
 
 
