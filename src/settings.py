@@ -15,7 +15,17 @@ class DatabaseSettings:
     @property
     def database_url(self) -> tuple:
         db = self._secrets["database"]
-        return db['host'], db['password']
+        host = (db.get("host") or "").strip()
+        password = (db.get("password") or "").strip()
+        # Si l'URL n'a pas de protocole, construire l'URL REST Supabase
+        if host and not host.startswith(("http://", "https://")):
+            if host.startswith("db.") and "supabase.co" in host:
+                # db.PROJECT.supabase.co -> https://PROJECT.supabase.co/rest/v1
+                project = host[3:].split(".")[0]  # "hkjhkruzfvglrgcomqzj"
+                host = f"https://{project}.supabase.co/rest/v1"
+            else:
+                host = f"https://{host}"
+        return host, password
         
 class S3Settings:
     
@@ -30,5 +40,15 @@ class S3Settings:
 
     @property
     def s3_access(self) -> tuple:
-        s3 = self._secrets["S3"]
-        return s3["bucket_name"], s3["access_key"], s3["secret_key"]
+        # Accepter "S3" ou "s3" (sensible à la casse dans le YAML)
+        s3 = self._secrets.get("S3") or self._secrets.get("s3")
+        if not s3:
+            raise KeyError(
+                "Clé 'S3' ou 's3' manquante dans le fichier de secrets. "
+                "Ajoutez une section S3: avec bucket_name, access_key, secret_key."
+            )
+        # Nettoyer espaces/newlines (copier-coller, YAML)
+        bucket = str(s3.get("bucket_name", "")).strip()
+        access = str(s3.get("access_key", "")).strip()
+        secret = str(s3.get("secret_key", "")).strip()
+        return bucket, access, secret

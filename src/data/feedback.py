@@ -1,11 +1,17 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text
 
 class Feedback():
-    
+    """
+    Modèle feedback. En base, la table doit contenir au minimum:
+    - id (auto), feedback_date, predicted_class, diagnostic, comment
+    - img_id (optionnel, pour référence images_dataset)
+    - image_url (optionnel, pour images uploadées et stockées sur S3)
+    """
     __tablename__ = "feedback"
 
     id = Column(Integer, primary_key=True)
-    img_id = Column(Integer)
+    img_id = Column(Integer, nullable=True)
+    image_url = Column(String, nullable=True)
     feedback_date = Column(DateTime)
     predicted_class = Column(String)
     diagnostic = Column(String)

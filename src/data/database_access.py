@@ -43,7 +43,13 @@ class DatabaseAccess:
         async with self.get_session() as client:
             response = await client.post(url, json=data)
             response.raise_for_status()
-            return response.json()
+            body = (response.text or "").strip()
+            if not body:
+                return {}
+            try:
+                return response.json()
+            except Exception:
+                return {}
 
     async def update(self, table: str, data: Dict[str, Any], match: Dict[str, Any]):
         """
