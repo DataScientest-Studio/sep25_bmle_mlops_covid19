@@ -303,7 +303,7 @@ class Base_model(ABC):
         # --- Scores ---
         classes = [0, 1]
         acc = accuracy_score(y_true, y_pred)
-        cm = pd.crosstab(y_true, y_pred, dropna=False).reindex(index=classes, columns=classes, fill_value=0)
+        cm = pd.crosstab(y_true, y_pred, rownames=['Classe réelle'], colnames=['Classe prédite'], dropna=False).reindex(index=classes, columns=classes, fill_value=0)
         report = classification_report(
             y_true, 
             y_pred,
