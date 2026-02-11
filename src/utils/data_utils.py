@@ -296,36 +296,45 @@ def build_masked_dataset_by_classes(
         images_dir = class_dir / "images"
         masks_dir = class_dir / "masks"
 
-        if not images_dir.exists() or not masks_dir.exists():
+        # Support datasets without masks: fall back to images in class_dir
+        if images_dir.exists():
+            image_source_dir = images_dir
+            use_masks = masks_dir.exists()
+        else:
+            image_source_dir = class_dir
+            use_masks = False
+
+        if not image_source_dir.exists():
             raise RuntimeError(f"Structure invalide dans {class_dir}")
 
-        for img_path in images_dir.iterdir():
+        for img_path in image_source_dir.iterdir():
             if img_path.suffix.lower() not in ".png":
                 continue
 
-            mask_path = masks_dir / img_path.name
+            if use_masks:
+                mask_path = masks_dir / img_path.name
+                if not mask_path.exists():
+                    print(f"Mask manquant pour {img_path.name}, ignoré")
+                    continue
 
-            if not mask_path.exists():
-                print(f"Mask manquant pour {img_path.name}, ignoré")
-                continue
+                img = cv2.imread(str(img_path))
+                mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+                if img is None or mask is None:
+                    print(f"[WARNING] Image/mask illisible pour {img_path.name}, ignoré")
+                    continue
 
-            # Lecture image + masque
-            img = cv2.imread(str(img_path))
-            mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+                mask = (mask > 0).astype(np.uint8)
+                mask = cv2.resize(mask, (img.shape[0], img.shape[1]))
+                masked = img * mask[:, :, None]
+                output_img = masked
+            else:
+                output_img = cv2.imread(str(img_path))
+                if output_img is None:
+                    print(f"[WARNING] Image illisible : {img_path}, ignoré")
+                    continue
 
-            # Binariser le masque
-            mask = (mask > 0).astype(np.uint8)
-            
-            # Binariser le masque
-            mask = cv2.resize(mask, (img.shape[0], img.shape[1]))
-
-            # Appliquer le masque
-            masked = img * mask[:, :, None]
-
-            # Nom de sortie unique
             out_name = img_path.name
             out_path = output_root / str(label) / out_name
-
-            cv2.imwrite(str(out_path), masked)
+            cv2.imwrite(str(out_path), output_img)
 
     print("Dataset binaire masqué créé avec succès.")
