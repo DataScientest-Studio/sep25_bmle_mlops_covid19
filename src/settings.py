@@ -31,4 +31,4 @@ class S3Settings:
     @property
     def s3_access(self) -> tuple:
         s3 = self._secrets["S3"]
-        return s3["bucket_name"], s3["access_key"], s3["secret_key"]
+        return s3["bucket_name"], s3["access_key"], s3["secret_key"], s3["b2_endpoint"]

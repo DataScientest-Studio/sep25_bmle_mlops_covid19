@@ -66,4 +66,18 @@ async def post_metrics(data):
 
     response = await db.insert("training_log", data=data)
     
+async def fetch_dataset():
+
+    root = Path(__file__).resolve().parent.parent.parent
+    secrets_path = root / "secrets.yaml"
+    
+    settings = DatabaseSettings(str(secrets_path))
+    url, key = settings.database_url
+
+    db = DatabaseAccess(api_url=url, api_key=key)
+
+    response = await db.fetch_all("images_dataset")
+    
+    return response
+    
 

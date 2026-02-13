@@ -180,3 +180,6 @@ secrets.yaml
 /mlartifacts/
 mlflow.db
 .mlflow.db
+/models
+/metrics
+/dataset

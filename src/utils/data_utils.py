@@ -7,6 +7,12 @@ import cv2
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+import sys
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from src.utils.s3_utils import S3ImageLoader
 
 def plot_classification_report(classification_report_dict, figsize=(6, 3)):
     """
@@ -363,3 +369,93 @@ def build_masked_dataset_by_classes(
             cv2.imwrite(str(out_path), output_img)
 
     print("Dataset binaire masqué créé avec succès.")
+    
+
+def build_metadata(df: pd.DataFrame, test_size=0.2, random_state=42) -> tuple:
+    
+    train_df, test_df = train_test_split(
+        df,
+        test_size=test_size,
+        stratify=df["class_type"],
+        random_state=random_state
+    )
+
+    train_df["oversample"] = 0
+    test_df["oversample"] = 0
+    
+    # strip et convertir en string
+    train_df["class_type"] = train_df["class_type"].astype(str).str.strip()
+    test_df["class_type"] = test_df["class_type"].astype(str).str.strip()
+
+    # oversampling de la classe minoritaire
+    counts = train_df["class_type"].value_counts()
+
+    minority_class = counts.idxmin()
+    ratio = (counts.max() // counts.min()) - 1
+    df_minority = train_df[train_df["class_type"] == minority_class]
+
+    if ratio > 0:
+        df_oversample = pd.concat([df_minority] * (ratio))
+        df_oversample["oversample"] = 1
+
+        # Ajouter un index pour chaque duplication
+        df_oversample = df_oversample.reset_index(drop=True)
+
+        train_df = pd.concat([train_df, df_oversample], ignore_index=True)
+           
+    train_df = train_df.sample(frac=1).reset_index(drop=True)
+    
+    ######################################################################################################   
+    # provisoire pour tests
+    counts = train_df["class_type"].value_counts()
+    minority_class = counts.idxmin()
+    majority_class = counts.idxmax()
+    train_df_1 = train_df[train_df["class_type"] == minority_class]
+    train_df_1 = train_df_1.sample(n=40, random_state=911)
+    train_df_0 = train_df[train_df["class_type"] == majority_class]
+    train_df_0 = train_df_0.sample(n=40, random_state=911)
+    train_df = pd.concat([train_df_0, train_df_1])
+    
+    test_df_0 = test_df[test_df["class_type"] == majority_class]
+    test_df_0 = test_df_0.sample(n=10, random_state=404)
+    test_df_1 = test_df[test_df["class_type"] == minority_class]
+    test_df_1 = test_df_1.sample(n=10, random_state=404)
+    test_df = pd.concat([test_df_0, test_df_1])
+
+    ######################################################################################################
+
+    return train_df, test_df, ratio
+
+def build_tf_dataset(df, loader: S3ImageLoader, batch_size=8, image_width=299, image_heigh=299):
+    """
+    df: DataFrame avec colonnes ['image_url', 'mask_url', 'class_type', 'oversample']
+    loader: instance de S3ImageLoader
+    augment: augmentation pour les oversampled
+    """
+    # duplication des lignes oversample si besoin
+    oversample_df = df[df["oversample"] == 1]
+    if not oversample_df.empty:
+        df = pd.concat([df, oversample_df], ignore_index=True)
+
+    # shuffle
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    # generator python pour tf.data.Dataset
+    def gen():
+        for _, row in df.iterrows():
+            x = loader.load_image(row["image_url"], row["mask_url"], augment=(row.get("oversample", 0)==1), image_width=image_width, image_heigh=image_heigh)
+            y = tf.one_hot(int(row["class_type"]), depth=2)
+            yield x, y
+
+    ds = tf.data.Dataset.from_generator(
+        gen,
+        output_signature=(
+            tf.TensorSpec(shape=(image_width, image_heigh, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(2,), dtype=tf.int32)
+        )
+    )
+
+    ds = ds.batch(batch_size)
+    ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE)
+
+    return ds
