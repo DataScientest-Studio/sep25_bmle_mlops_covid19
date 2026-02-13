@@ -125,3 +125,11 @@ Ce projet vise à fournir une chaîne complète, reproductible et exploitable po
     Le déséquilibre de classes
     L’automatisation du pipeline de données
     L’explicabilité des modèles (Grad-CAM)
+
+## Présentation de soutenance (Streamlit)
+
+Une application Streamlit dédiée à la soutenance permet de présenter le projet de façon structurée (contexte, objectifs, données, modèle, API, application clinique, boucle MLOps, stack, conclusion) :
+
+    streamlit run src/streamlit/streamlit_presentation_soutenance.py
+
+Navigation par la barre latérale pour parcourir les slides. Les schémas sont générés en images (matplotlib) pour une taille lisible en soutenance.
