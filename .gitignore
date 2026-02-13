@@ -174,3 +174,7 @@ notebooks/test_fonction.ipynb
 
 # code secret
 secrets.yaml
+
+# mlflow
+/mlartifacts/
+mlflow.db
