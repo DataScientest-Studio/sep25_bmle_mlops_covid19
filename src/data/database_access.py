@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional
 import httpx
+import pandas as pd
 
 
 class DatabaseAccess:
@@ -27,6 +28,33 @@ class DatabaseAccess:
             response = await client.get(url, params=params)
             response.raise_for_status()
             return response.json()
+        
+    async def fetch_all(self, table: str, params: Optional[Dict[str, Any]] = None, batch_size=1000):
+        """
+        Récupérer des lignes d'une table.
+        """
+        all_rows = []
+        offset = 0
+
+        async with self.get_session() as client:
+            while True:
+                # range pour la pagination : Supabase range(start, end)
+                headers = {"Range": f"{offset}-{offset + batch_size - 1}"}
+                
+                url = f"{self.api_url}{table}"
+                response = await client.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                
+                if not data:  # plus de lignes à récupérer
+                    break
+                
+                all_rows.extend(data)
+                offset += batch_size
+
+        df = pd.DataFrame(all_rows)
+        
+        return df
 
     async def insert(
         self,

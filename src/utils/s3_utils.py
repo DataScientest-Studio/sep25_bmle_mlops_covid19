@@ -1,12 +1,17 @@
+import hashlib
 import os
 import csv
 import uuid
+import shutil
 import boto3
 from botocore.client import Config
 from datetime import datetime
 
 import sys
 from pathlib import Path
+
+import cv2
+import tensorflow as tf
 sys.path.append(str(Path().resolve()))
 from src.settings import S3Settings
 
@@ -104,15 +109,15 @@ def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_r
 
             try:
                 # Upload
-                s3.upload_file(image_path, bucket_name, image_s3_key)
-                s3.upload_file(mask_path, bucket_name, mask_s3_key)
+                #s3.upload_file(image_path, bucket_name, image_s3_key)
+                #s3.upload_file(mask_path, bucket_name, mask_s3_key)
                 pass
             except Exception as e:
                 print(e)
 
             # Générer les URLs publiques
-            image_url = f"https://{bucket_name}.{BAKEBLAZE_URL}/{image_s3_key}"
-            mask_url = f"https://{bucket_name}.{BAKEBLAZE_URL}/{mask_s3_key}"
+            image_url = image_s3_key
+            mask_url = mask_s3_key
 
             csv_rows.append([image_url, mask_url, class_type, now, now])
             print(f"Uploaded {filename} and added to CSV")
@@ -125,18 +130,74 @@ def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_r
 
     print(f"CSV file saved to {output_csv}")
 
-# Exemple d'utilisation
-if __name__ == "__main__":
-    
-    settings = S3Settings("secrets.yaml")
-    
-    bucket_name, access_key, secret_key = settings.s3_access
 
-    upload_dataset_and_generate_csv(
-        bucket_name=bucket_name,
-        access_key=access_key,
-        secret_key=secret_key,
-        local_root="./data/COVID-19_Radiography_Dataset",
-        s3_prefix="dataset",
-        output_csv="dataset.csv"
-    )
+class S3ImageLoader:
+    
+    def __init__(self, endpoint, key_id, app_key, bucket, cache_dir):
+        self.s3 = boto3.client(
+            "s3",
+            endpoint_url=f"https://{endpoint}",
+            aws_access_key_id=key_id,
+            aws_secret_access_key=app_key
+        )
+        self.bucket = bucket
+        self.cache_dir = Path(cache_dir)
+        if os.path.exists(self.cache_dir):
+            shutil.rmtree(self.cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _cache_path(self, url):
+        
+        h = hashlib.md5(url.encode()).hexdigest()
+        return self.cache_dir / f"{h}.jpg"
+    
+    def _load_from_s3(self, url):
+
+        try:
+            cache_path = self._cache_path(f"{url}")
+            if not cache_path.exists():
+                obj = self.s3.get_object(Bucket=self.bucket, Key=url)
+
+                body = obj["Body"].read()
+
+                with open(cache_path, "wb+") as f: 
+                    f.write(body)
+                    
+            return str(cache_path)
+        
+        except Exception as e:
+            print(e)
+            print(f"{url = }, {cache_path = }")
+            raise ValueError(e)
+
+
+    def load_image(self, image_url, mask_url, augment=False, image_width=299, image_heigh=299):
+
+        # charger image et mask depuis S3 ou cache
+        img_path = self._load_from_s3(image_url)
+        mask_path = self._load_from_s3(mask_url)
+        
+        if img_path and mask_path:
+            img = tf.io.read_file(img_path)
+            img = tf.image.decode_png(img, channels=3)
+            img = tf.image.convert_image_dtype(img, tf.float32)
+            img = tf.image.resize(img, (image_width, image_heigh))
+
+            mask = tf.io.read_file(mask_path)
+            mask = tf.image.decode_png(mask, channels=1)
+            mask = tf.image.convert_image_dtype(mask, tf.float32)
+            mask = tf.image.resize(mask, (image_width, image_heigh))
+
+            # appliquer le mask sur l'image
+            masked = img * mask
+            
+            masked = masked / 255.0
+
+            if augment:
+                masked = tf.image.random_flip_left_right(masked)
+                masked = tf.image.random_brightness(masked, 0.1)
+                masked = tf.image.random_contrast(masked, 0.8, 1.2)
+
+            return masked
+        else:
+            return None
