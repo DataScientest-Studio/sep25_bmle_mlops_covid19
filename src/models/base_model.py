@@ -195,13 +195,13 @@ class Base_model(ABC):
             self.train_gen = train_ds.cache().prefetch(buffer_size=tf.data.AUTOTUNE)
             self.test_gen = val_ds.cache().prefetch(buffer_size=tf.data.AUTOTUNE)
             
-    def load_data_from_s3(self, cache_dir):
+    def load_data_from_s3(self, cache_dir, nb_case=100):
         
         raw_data = asyncio.run(fetch_dataset())
         
         df = pd.DataFrame(raw_data)
 
-        train_df, test_df, oversampling_ratio = build_metadata(df, 1 - self.train_size, self.random_state)
+        train_df, test_df, oversampling_ratio = build_metadata(df, 1 - self.train_size, self.random_state, nb_case=nb_case)
         
         train_df.to_csv("dataset/train_df.csv")
         test_df.to_csv("dataset/test_df.csv")

@@ -371,7 +371,7 @@ def build_masked_dataset_by_classes(
     print("Dataset binaire masqué créé avec succès.")
     
 
-def build_metadata(df: pd.DataFrame, test_size=0.2, random_state=42) -> tuple:
+def build_metadata(df: pd.DataFrame, test_size=0.2, random_state=42, nb_case=100) -> tuple:
     
     train_df, test_df = train_test_split(
         df,
@@ -411,15 +411,15 @@ def build_metadata(df: pd.DataFrame, test_size=0.2, random_state=42) -> tuple:
     minority_class = counts.idxmin()
     majority_class = counts.idxmax()
     train_df_1 = train_df[train_df["class_type"] == minority_class]
-    train_df_1 = train_df_1.sample(n=40, random_state=911)
+    train_df_1 = train_df_1.sample(n=nb_case/2, random_state=911)
     train_df_0 = train_df[train_df["class_type"] == majority_class]
-    train_df_0 = train_df_0.sample(n=40, random_state=911)
+    train_df_0 = train_df_0.sample(n=nb_case/2, random_state=911)
     train_df = pd.concat([train_df_0, train_df_1])
     
     test_df_0 = test_df[test_df["class_type"] == majority_class]
-    test_df_0 = test_df_0.sample(n=10, random_state=404)
+    test_df_0 = test_df_0.sample(n=nb_case/10, random_state=404)
     test_df_1 = test_df[test_df["class_type"] == minority_class]
-    test_df_1 = test_df_1.sample(n=10, random_state=404)
+    test_df_1 = test_df_1.sample(n=nb_case/10, random_state=404)
     test_df = pd.concat([test_df_0, test_df_1])
 
     ######################################################################################################

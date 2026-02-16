@@ -2,8 +2,8 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
 
-from src.models.train_model import train_and_save
 from src.models.predict_model import predict_from_bytes, predict_from_db
+from src.models.train_model_mlflow import train_model_mlflow
 
 app = FastAPI(title="COVID-19 Radiography API", version="1.0.0")
 
@@ -31,7 +31,7 @@ def health():
 @app.post("/train")
 def train(request: TrainRequest):
     try:
-        model_path = train_and_save(
+        """model_path = train_and_save(
             epochs=request.epochs or 200,
             force=bool(request.force),
             data_source=request.data_source or "db",
@@ -39,8 +39,9 @@ def train(request: TrainRequest):
             db_limit=request.db_limit,
             db_batch_size=request.db_batch_size or 1000,
             apply_masks=bool(request.apply_masks),
-        )
-        return {"status": "trained", "model_path": str(model_path)}
+        )"""
+        train_model_mlflow()
+        return {"status": "trained"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
