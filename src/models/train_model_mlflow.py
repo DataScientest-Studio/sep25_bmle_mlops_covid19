@@ -1,7 +1,4 @@
 import asyncio
-from calendar import c
-import os
-from pyexpat import model
 import random
 import shutil
 import sys

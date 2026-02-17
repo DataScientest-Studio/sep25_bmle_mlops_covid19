@@ -1,8 +1,8 @@
 import hashlib
 import os
 import csv
-import uuid
 import shutil
+import uuid
 import boto3
 from botocore.client import Config
 from datetime import datetime
@@ -156,7 +156,8 @@ class S3ImageLoader:
         try:
             cache_path = self._cache_path(f"{url}")
             if not cache_path.exists():
-                obj = self.s3.get_object(Bucket=self.bucket, Key=url)
+                key=url
+                obj = self.s3.get_object(Bucket=self.bucket, Key=key)
 
                 body = obj["Body"].read()
 

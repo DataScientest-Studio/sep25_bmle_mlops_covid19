@@ -1,14 +1,56 @@
 services:
+  # -------------------------------
+  # PostgreSQL pour Airflow
+  # -------------------------------
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+    networks:
+      - docker-mlops-covid19
+
+  # -------------------------------
+  # Redis pour CeleryExecutor (Airflow)
+  # -------------------------------
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+    restart: always
+    networks:
+      - docker-mlops-covid19
+
+  # -------------------------------
+  # Airflow Webserver
+  # -------------------------------
   airflow-webserver:
     image: apache/airflow:2.8.1
     container_name: airflow_webserver
     restart: always
+    depends_on:
+      - postgres
+      - redis
     ports:
       - "8081:8080"
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__WEBSERVER__SECRET_KEY: "supersecretkey"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
@@ -24,7 +66,12 @@ services:
           --email admin@example.com || true &&
         airflow webserver
       "
+    networks:
+      - docker-mlops-covid19
 
+  # -------------------------------
+  # Airflow Scheduler
+  # -------------------------------
   airflow-scheduler:
     image: apache/airflow:2.8.1
     container_name: airflow_scheduler
@@ -32,39 +79,50 @@ services:
     depends_on:
       - airflow-webserver
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
     command: airflow scheduler
+    networks:
+      - docker-mlops-covid19
 
+
+
+  # -------------------------------
+  # MLflow
+  # -------------------------------
   mlflow:
-      image: ghcr.io/mlflow/mlflow:latest
-      container_name: mlflow
-      ports:
-        - "5000:5000"
-      volumes:
-        - ./mlflow/mlruns:/mlflow/artifacts
-        - ./backend_store:/mlflow
-      command: >
-        mlflow server
-        --host 0.0.0.0
-        --port 5000
-        --backend-store-uri sqlite:///mlflow.db
-        --default-artifact-root /mlflow/artifacts
-        --serve-artifacts
-        --allowed-hosts "*"
-      networks:
-        - docker-mlops-covid19
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+      - mlflow-backend:/mlflow/backend_store
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/backend_store/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
+      --allowed-hosts "*"
+    networks:
+      - docker-mlops-covid19
 
+  # -------------------------------
+  # Train API
+  # -------------------------------
   train-model-api:
     build:
       context: .
-      target: train_model_api
+      target: train-model-api
     ports:
       - "8001:8000"
-    image: train_model_api:latest
-    container_name: train_model_api
+    image: train-model-api:latest
+    container_name: train-model-api
     volumes:
     - ./metrics:/app/metrics
     - ./models:/app/models
@@ -76,31 +134,41 @@ services:
     networks:
       - docker-mlops-covid19
 
-  predict_api:
+  # -------------------------------
+  # Predict API
+  # -------------------------------
+  predict-api:
     build:
       context: .
-      target: predict_api
+      target: predict-api
     ports:
       - "8002:8000"
-    image: predict_api:latest
-    container_name: predict_api
+    image: predict-api:latest
+    container_name: predict-api
     volumes:
     - ./models:/app/models
     - ./.dvc:/.dvc
     networks:
       - docker-mlops-covid19
 
-  #streamlit_clinic_app:
-  #  build:
-  #    context: .
-  #    target: streamlit_clinic_app
-  #  image: streamlit_clinic_app:latest
-  #  container_name: streamlit_clinic_app
-  #  networks:
-  #    - docker-mlops-covid19 
+  # -------------------------------
+  # Predict API
+  # -------------------------------
+  streamlit-clinic-app:
+    build:
+      context: .
+      target: streamlit-clinic-app
+    image: streamlit-clinic-app:latest
+    ports:
+    - "8501:8501"
+    container_name: streamlit-clinic-app
+    networks:
+      - docker-mlops-covid19 
 
 networks:
   docker-mlops-covid19:
 
 volumes:
   postgres-db-volume:
+  mlflow-artifacts:
+  mlflow-backend:
