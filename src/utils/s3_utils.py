@@ -1,6 +1,7 @@
 import hashlib
 import os
 import csv
+import uuid
 import shutil
 import boto3
 from botocore.client import Config
@@ -13,6 +14,41 @@ import cv2
 import tensorflow as tf
 sys.path.append(str(Path().resolve()))
 from src.settings import S3Settings
+
+# Backblaze B2 endpoint (utilisé pour les URLs publiques)
+B2_ENDPOINT = "s3.eu-central-003.backblazeb2.com"
+
+
+def get_s3_client(access_key: str, secret_key: str, endpoint: str = f"https://{B2_ENDPOINT}"):
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=Config(signature_version="s3v4"),
+    )
+
+
+def upload_feedback_image(
+    bucket_name: str,
+    access_key: str,
+    secret_key: str,
+    image_bytes: bytes,
+    s3_prefix: str = "feedback",
+    extension: str = "png",
+) -> str:
+    """
+    Upload une image (bytes) dans le bucket S3 et retourne l'URL publique.
+    """
+    client = get_s3_client(access_key, secret_key)
+    key = f"{s3_prefix}/{uuid.uuid4().hex}.{extension}"
+    client.put_object(
+        Bucket=bucket_name,
+        Key=key,
+        Body=image_bytes,
+        ContentType=f"image/{extension}",
+    )
+    return f"https://{bucket_name}.{B2_ENDPOINT}/{key}"
 
 def upload_dataset_and_generate_csv(bucket_name, access_key, secret_key, local_root, s3_prefix="", output_csv="dataset.csv"):
     """
