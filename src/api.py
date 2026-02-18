@@ -11,58 +11,8 @@ from typing import Optional
 import numpy as np
 import cv2
 
-from src.models.train_model import train_and_save
-from src.models.predict_model import predict_from_bytes, predict_from_db, predict_with_gradcam
-from src.data.database_access import DatabaseAccess
-from src.settings import DatabaseSettings, S3Settings
-from src.utils.s3_utils import upload_feedback_image
-
-
-def _supabase_storage_upload(
-    base_url: str,
-    api_key: str,
-    bucket: str,
-    object_path: str,
-    content: bytes,
-    content_type: str = "image/png",
-) -> tuple[Optional[str], Optional[str]]:
-    """
-    Upload un fichier vers Supabase Storage.
-    Essaie multipart/form-data puis body binaire. Retourne (url_publique, None) ou (None, message_erreur).
-    base_url: https://PROJECT.supabase.co (sans /rest/v1)
-    """
-    base_url = base_url.rstrip("/")
-    url = f"{base_url}/storage/v1/object/{bucket}/{object_path}"
-    auth_headers = {
-        "Authorization": f"Bearer {api_key}",
-        "apikey": api_key,
-    }
-
-    def _try_upload(use_multipart: bool) -> tuple[Optional[str], Optional[str]]:
-        try:
-            with httpx.Client(timeout=30.0) as client:
-                if use_multipart:
-                    filename = object_path.split("/")[-1]
-                    r = client.post(url, files={"file": (filename, content, content_type)}, headers=auth_headers)
-                else:
-                    r = client.post(url, content=content, headers={**auth_headers, "Content-Type": content_type})
-                r.raise_for_status()
-                return f"{base_url}/storage/v1/object/public/{bucket}/{object_path}", None
-        except httpx.HTTPStatusError as e:
-            err_body = (e.response.text or "")[:250]
-            return None, f"Storage {e.response.status_code}: {err_body}"
-        except Exception as e:
-            return None, str(e)[:200]
-
-    # Essai 1 : multipart/form-data (format standard)
-    url_or_none, err = _try_upload(use_multipart=True)
-    if url_or_none:
-        return url_or_none, None
-    # Essai 2 : body binaire (certaines configs l'acceptent)
-    url_or_none, err2 = _try_upload(use_multipart=False)
-    if url_or_none:
-        return url_or_none, None
-    return None, err or err2
+from src.models.predict_model import predict_from_bytes, predict_from_db
+from src.models.train_model_mlflow import train_model_mlflow
 
 app = FastAPI(title="COVID-19 Radiography API", version="1.0.0")
 
@@ -85,23 +35,6 @@ class PredictDbRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-@app.post("/train")
-def train(request: TrainRequest):
-    try:
-        model_path = train_and_save(
-            epochs=request.epochs or 200,
-            force=bool(request.force),
-            data_source=request.data_source or "db",
-            db_table=request.db_table or "images_dataset",
-            db_limit=request.db_limit,
-            db_batch_size=request.db_batch_size or 1000,
-            apply_masks=bool(request.apply_masks),
-        )
-        return {"status": "trained", "model_path": str(model_path)}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/predict")

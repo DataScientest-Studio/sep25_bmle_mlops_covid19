@@ -1,6 +1,5 @@
 import asyncio
-import os
-from pyexpat import model
+import random
 import shutil
 import sys
 from pathlib import Path
@@ -17,14 +16,14 @@ import yaml
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from src.models.models_to_test import EfficientNetv2B0_model_augmented
 from src.utils.data_utils import plot_classification_report
-from src.utils.database_utils import get_parameters, post_metrics, get_metrics_model_by_stage
+from src.utils.database_utils import get_parameters, post_metrics, get_metrics_model_by_stage, update_stage
 from src.utils.mlflow_utils import  log_training_parameters
 
 
 def train_model_mlflow():
     now = datetime.now().strftime("%Y-%m-%d-%H-%M-%f")
-    mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    mlflow.set_experiment(f"COVID_19_test2")
+    mlflow.set_tracking_uri("http://mlflow:5000")
+    mlflow.set_experiment(f"COVID_19_training")
     
     training_parameters = asyncio.run(get_parameters())
     
@@ -41,6 +40,26 @@ def train_model_mlflow():
         
     with mlflow.start_run(run_name=f"Training_{now}") as run:
         
+        client = mlflow.MlflowClient()
+        ########################## éléments pour simuler un scheduleur avec augmantation du dataset ##############
+        nb_case = 100
+        
+        with open("training_dataset_size.txt", "r") as f:
+            nb_case = f.read()
+        
+        print(f"{nb_case = }")
+        epochs = 10
+        
+        # tirage aléatoire pour savoir si on augmente le nombre de cas ou le nombre d'epochs
+        x = random.randint(0, 1)
+        if x == 0:
+            nb_case = int(nb_case) + 100
+            with open("training_dataset_size.txt", "w") as f:
+                f.write(str(nb_case))
+        else:
+            epochs = epochs + 2
+        
+        
         if training_parameters:
             # alimentation des paramêtres d'entrainements
             log_training_parameters(training_parameters)
@@ -52,13 +71,23 @@ def train_model_mlflow():
             mlflow.log_param("oversample_ratio", model.oversampling_ratio)
             mlflow.log_param("augmentation_ops", "flip,rotate,zoom,brightness")
             
-            model.fit(epochs=10)
+            model.fit(epochs=epochs)
             
             model.predict()
             classif = model.metrics["classification_report"]
             conf = model.metrics["confusion_matrix"]
             
             training_log_prod = asyncio.run(get_metrics_model_by_stage("prod"))
+            
+            prod_run = client.search_runs(
+                experiment_ids=["1"],
+                filter_string='tags.stage = "prod"'
+            )
+            
+            candidate_run = client.search_runs(
+                experiment_ids=["1"],
+                filter_string='tags.stage = "candidate"'
+            )
             
             if training_log_prod:
                 if classif["1"]["recall"] > training_log_prod["class_1_recall"]:
@@ -70,6 +99,51 @@ def train_model_mlflow():
                     stage = "rejected"
             else:
                 stage = "prod"
+                
+                
+            # mise à jour des tags de prod et candidate
+            if stage == "candidate" and candidate_run is None:
+                pass
+            elif stage == "candidate" and candidate_run is not None:
+                client.set_tag(prod_run[0].info.run_id, "stage", "archived")
+                client.set_tag(candidate_run[0].info.run_id, "stage", "prod")
+                # mise à jour en base
+                asyncio.run(update_stage(prod_run[0].info.run_id, "archived"))
+                asyncio.run(update_stage(candidate_run[0].info.run_id, "prod"))
+                # modification du registry
+                prod_model = client.search_model_versions(f"run_id='{prod_run[0].info.run_id}'")
+                candidate_model = client.search_model_versions(f"run_id='{candidate_run[0].info.run_id}'")
+                client.transition_model_version_stage(
+                    name=prod_model[0].name,
+                    version=prod_model[0].version,
+                    stage="Archived"
+                )
+                client.transition_model_version_stage(
+                    name=candidate_model[0].name,
+                    version=candidate_model[0].version,
+                    stage="Production"
+                )
+            elif stage == "rejected" and candidate_run is not None:
+                client.set_tag(prod_run[0].info.run_id, "stage", "archived")
+                client.set_tag(candidate_run[0].info.run_id, "stage", "prod")
+                # mise à jour en base
+                asyncio.run(update_stage(prod_run[0].info.run_id, "archived"))
+                asyncio.run(update_stage(candidate_run[0].info.run_id, "prod"))
+                
+                # modification du registry
+                prod_model = client.search_model_versions(f"run_id='{prod_run[0].info.run_id}'")
+                candidate_model = client.search_model_versions(f"run_id='{candidate_run[0].info.run_id}'")
+
+                client.transition_model_version_stage(
+                    name=prod_model[0].name,
+                    version=prod_model[0].version,
+                    stage="Archived"
+                )
+                client.transition_model_version_stage(
+                    name=candidate_model[0].name,
+                    version=candidate_model[0].version,
+                    stage="Production"
+                )
 
             # Alimentation des metrics d'entrainement dans la base de données
             training_log = {"training_date": datetime.strptime(now, "%Y-%m-%d-%H-%M-%f").isoformat(),
@@ -89,7 +163,8 @@ def train_model_mlflow():
                     "true_class_0": int(conf.loc[0,0]),
                     "false_class_0": int(conf.loc[0,1]),
                     "true_class_1": int(conf.loc[1,1]),
-                    "false_class_1": int(conf.loc[1,0])
+                    "false_class_1": int(conf.loc[1,0]),
+                    "modification_date": datetime.strptime(now, "%Y-%m-%d-%H-%M-%f").isoformat()
                     }
             
             # log des metrics 
@@ -143,6 +218,7 @@ def train_model_mlflow():
             # sauvegarde du model
             model.save()
             
+            print("sauvegarde du model ok")
             mlflow.log_param("dvc_path", f"./models/{model_name}")
             mlflow.log_param("dvc_models_hash", get_dvc_hash(f"models.dvc"))
             mlflow.log_param("dvc_dataset_hash", get_dvc_hash(f"dataset.dvc"))
@@ -155,9 +231,16 @@ def train_model_mlflow():
             model_uri = "runs:/{}/model".format(run.info.run_id)
             model_version = mlflow.register_model(model_uri, model_name)
             
-            if stage == "prod" or stage == "candidate":
-                client = mlflow.MlflowClient()
+            if stage == "prod":
+                                
+                client.transition_model_version_stage(
+                        name=model_name,
+                        version=model_version.version,
+                        stage="Production",
+                        archive_existing_versions=True
+                    )
                 
+            if  stage == "candidate":
                 client.transition_model_version_stage(
                         name=model_name,
                         version=model_version.version,

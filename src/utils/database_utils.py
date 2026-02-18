@@ -1,3 +1,4 @@
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -77,6 +78,28 @@ async def fetch_dataset():
     db = DatabaseAccess(api_url=url, api_key=key)
 
     response = await db.fetch_all("images_dataset")
+    
+    return response
+
+async def update_stage(run_id, new_stage):
+
+    now = datetime.now().strftime("%Y-%m-%d-%H-%M-%f")
+
+    root = Path(__file__).resolve().parent.parent.parent
+    secrets_path = root / "secrets.yaml"
+    
+    settings = DatabaseSettings(str(secrets_path))
+    url, key = settings.database_url
+
+    db = DatabaseAccess(api_url=url, api_key=key)
+    
+    data = {"stage":new_stage,
+            "modification_date": datetime.strptime(now, "%Y-%m-%d-%H-%M-%f").isoformat()
+            }
+    
+    match = {"run_id":run_id}
+
+    response = await db.update("training_log", data=data, match=match)
     
     return response
     
