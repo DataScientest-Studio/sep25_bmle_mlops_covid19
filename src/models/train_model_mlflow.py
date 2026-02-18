@@ -23,7 +23,7 @@ from src.utils.mlflow_utils import  log_training_parameters
 def train_model_mlflow():
     now = datetime.now().strftime("%Y-%m-%d-%H-%M-%f")
     mlflow.set_tracking_uri("http://mlflow:5000")
-    mlflow.set_experiment(f"COVID_19")
+    mlflow.set_experiment(f"COVID_19_training")
     
     training_parameters = asyncio.run(get_parameters())
     
