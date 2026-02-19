@@ -44,11 +44,12 @@ class S3Settings:
         s3 = self._secrets.get("S3") or self._secrets.get("s3")
         if not s3:
             raise KeyError(
-                "Clé 'S3' ou 's3' manquante dans le fichier de secrets. "
-                "Ajoutez une section S3: avec bucket_name, access_key, secret_key."
+                "Cle 'S3' ou 's3' manquante dans le fichier de secrets. "
+                "Ajoutez une section S3: avec bucket_name, access_key, secret_key, b2_endpoint."
             )
         # Nettoyer espaces/newlines (copier-coller, YAML)
         bucket = str(s3.get("bucket_name", "")).strip()
         access = str(s3.get("access_key", "")).strip()
         secret = str(s3.get("secret_key", "")).strip()
-        return bucket, access, secret
+        endpoint = str(s3.get("b2_endpoint", "")).strip()
+        return bucket, access, secret, endpoint

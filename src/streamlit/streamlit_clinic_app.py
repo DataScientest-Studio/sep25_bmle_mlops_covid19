@@ -3,7 +3,6 @@ Application Streamlit clinique: chargement d'image, prédiction via API, GradCAM
 réglage opacité/zoom, et zone de feedback médecin (diagnostic + commentaire) avec envoi vers API.
 """
 import base64
-import io
 import os
 import sys
 from pathlib import Path
@@ -14,10 +13,7 @@ import streamlit as st
 import httpx
 
 # Racine projet pour imports
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from src.utils.image_utils import overlay_gradcam_on_gray
 
 # --- Config ---
@@ -66,7 +62,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # URL de l'API (env ou défaut)
-API_BASE = os.environ.get("COVID_API_URL", "http://127.0.0.1:8000")
+API_BASE = os.environ.get("COVID_API_URL", "http://predict-api:8000")
 PREDICT_GRADCAM_URL = f"{API_BASE}/predict-with-gradcam"
 FEEDBACK_URL = f"{API_BASE}/feedback"
 
@@ -144,6 +140,7 @@ def main():
             value=True,
             help="Enregistre l'image dans la table images_dataset (Supabase).",
         )
+        print(f"{save_to_dataset = }")
         dataset_class_param = "0"
         if save_to_dataset:
             dataset_label_choice = st.selectbox(
@@ -157,6 +154,7 @@ def main():
     if st.session_state.uploaded_image_bytes and predict_clicked:
         with st.spinner("Prédiction en cours..."):
             try:
+                params = {}
                 files = {"file": ("image.png", st.session_state.uploaded_image_bytes, "image/png")}
                 params = {
                     "save_to_dataset": "true" if save_to_dataset else "false",

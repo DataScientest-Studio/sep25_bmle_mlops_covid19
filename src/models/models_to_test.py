@@ -6,56 +6,6 @@ from keras.applications import EfficientNetV2B0, efficientnet_v2
 from keras.optimizers import Adam
 
 from src.models.base_model import Base_model
-import tensorflow as tf
-
-class PatchExtractor(tf.keras.layers.Layer):
-    
-    def __init__(self, patch_size):
-        super().__init__()
-        self.patch_size = patch_size
-
-    def call(self, images):
-        batch_size = tf.shape(images)[0]
-
-        patches = tf.image.extract_patches(
-            images=images,
-            sizes=[1, self.patch_size, self.patch_size, 1],
-            strides=[1, self.patch_size, self.patch_size, 1],
-            rates=[1, 1, 1, 1],
-            padding="VALID"
-        )
-
-        # patches shape:
-        # (batch, n_h, n_w, patch_size * patch_size * 3)
-
-        n_h = tf.shape(patches)[1]
-        n_w = tf.shape(patches)[2]
-
-        # reshape 
-        patches = tf.reshape(
-            patches,
-            (
-                batch_size,
-                n_h * n_w,
-                self.patch_size,
-                self.patch_size,
-                3
-            )
-        )
-        
-        # Masque pour garder seulement les patchs qui ont au moins un pixel non nul
-        non_empty_mask = tf.reduce_any(patches > 0, axis=[2,3,4])
-        filtered_patches = tf.ragged.boolean_mask(patches, non_empty_mask)
-
-        # Convertir en tensor dense (patchs vides complétés avec 0)
-        filtered_patches = filtered_patches.to_tensor(default_value=0)
-
-        return filtered_patches
-    
-    def get_config(self):
-        config = super().get_config()
-        config.update({"patch_size": self.patch_size})
-        return config
 
 class Base(Base_model):
     

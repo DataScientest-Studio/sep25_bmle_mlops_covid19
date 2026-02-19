@@ -1,9 +1,13 @@
 from abc import ABC, abstractmethod
+import asyncio
 import os
-
+from pathlib import Path
+import sys
 import cv2
 
-from src.utils.modele_utils import find_last_conv_layer
+from src.settings import S3Settings
+from src.utils.s3_utils import S3ImageLoader
+
 # Désactive les logs TensorFlow
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -17,7 +21,12 @@ from keras import models, Model
 from keras.utils import image_dataset_from_directory
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, accuracy_score
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.utils.image_utils import load_image, overlay_gradcam_on_gray, overlay_heatmap, show
+from src.utils.data_utils import build_metadata, build_tf_dataset
+from src.utils.database_utils import fetch_dataset
+from src.utils.modele_utils import find_last_conv_layer
 
 
 class Base_model(ABC):
@@ -56,6 +65,7 @@ class Base_model(ABC):
         self.train_size = train_size
         self.random_state = random_state
         self.oversampling = oversampling
+        self.oversampling_ratio = 1
         
         # Images en nuance de gris?
         self.gray = gray
@@ -184,6 +194,52 @@ class Base_model(ABC):
         else:
             self.train_gen = train_ds.cache().prefetch(buffer_size=tf.data.AUTOTUNE)
             self.test_gen = val_ds.cache().prefetch(buffer_size=tf.data.AUTOTUNE)
+            
+    def load_data_from_s3(self, cache_dir, nb_case=100):
+        
+        raw_data = asyncio.run(fetch_dataset())
+        
+        df = pd.DataFrame(raw_data)
+
+        train_df, test_df, oversampling_ratio = build_metadata(df, 1 - self.train_size, self.random_state, nb_case=nb_case)
+        
+        train_df.to_csv("dataset/train_df.csv")
+        test_df.to_csv("dataset/test_df.csv")
+        
+        self.nb_training_data = len(train_df)
+        self.nb_validation_data = len(test_df)
+        
+        settings = S3Settings("secrets.yaml")
+    
+        bucket_name, access_key, secret_key, b2_endpoint = settings.s3_access
+ 
+        loader = S3ImageLoader(
+            endpoint=b2_endpoint,
+            key_id=access_key,
+            app_key=secret_key,
+            bucket=bucket_name,
+            cache_dir=cache_dir
+        )
+
+        train_ds = build_tf_dataset(
+            train_df,
+            loader,
+            batch_size=self.batch_size,
+            image_width=self.img_size[0],
+            image_heigh=self.img_size[1]            
+        )
+
+        test_ds = build_tf_dataset(
+            test_df,
+            loader,
+            batch_size=self.batch_size,
+            image_width=self.img_size[0],
+            image_heigh=self.img_size[1]
+        )
+
+        self.train_gen = train_ds
+        self.test_gen = test_ds
+        self.oversampling_ratio = oversampling_ratio
                     
     # ----------------------------------------------------------------------
     # Construction du modèle
@@ -303,7 +359,7 @@ class Base_model(ABC):
         # --- Scores ---
         classes = [0, 1]
         acc = accuracy_score(y_true, y_pred)
-        cm = pd.crosstab(y_true, y_pred, dropna=False).reindex(index=classes, columns=classes, fill_value=0)
+        cm = pd.crosstab(y_true, y_pred, rownames=['Classe réelle'], colnames=['Classe prédite'], dropna=False).reindex(index=classes, columns=classes, fill_value=0)
         report = classification_report(
             y_true, 
             y_pred,
@@ -319,6 +375,10 @@ class Base_model(ABC):
     # ----------------------------------------------------------------------
     # Sauvegarde / Chargement
     # ----------------------------------------------------------------------
+    def save(self):
+        output_path = self.save_model_folder / self.model_name
+        self.model.save(output_path)
+        
     def load(self, show_summary=False):
         model_path = self.save_model_folder / self.model_name
         self.model = models.load_model(model_path)
