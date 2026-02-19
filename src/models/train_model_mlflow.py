@@ -5,9 +5,11 @@ import sys
 from pathlib import Path
 from xmlrpc.client import boolean
 from matplotlib import pyplot as plt
+from prometheus_client import Counter, Gauge, Histogram
 import seaborn as sns
 import mlflow
 from datetime import datetime
+import time
 import pandas as pd
 import numpy as np
 from mlflow.models.signature import infer_signature
@@ -19,11 +21,34 @@ from src.utils.data_utils import plot_classification_report
 from src.utils.database_utils import get_parameters, post_metrics, get_metrics_model_by_stage, update_stage
 from src.utils.mlflow_utils import  log_training_parameters
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BASE_DIR / "data"
+DATASET_DIR_NAME = "structured_dataset"
+
+TRAINING_RUNS = Counter(
+    "training_runs_total",
+    "Nombre total d'execution"
+)
+
+MODEL_ACCURACY = Gauge(
+    "model_accuracy",
+    "Accuracy du dernier entrainement"
+)
+
+MODEL_CLASS_1_RECALL = Gauge(
+    "class_1_recall",
+    "recall de la classe COVID du dernier entrainement"
+)
+
+TRAINING_DURATION = Histogram(
+    "training_duration_seconds",
+    "Durée de l'entrainement en secondes"
+)
 
 def train_model_mlflow():
     now = datetime.now().strftime("%Y-%m-%d-%H-%M-%f")
     mlflow.set_tracking_uri("http://mlflow:5000")
-    mlflow.set_experiment(f"COVID_19_training")
+    mlflow.set_experiment(f"COVID_19_project")
     
     training_parameters = asyncio.run(get_parameters())
     
@@ -37,46 +62,63 @@ def train_model_mlflow():
     metrics_dir = Path("./metrics")
     # création du dossier temporaire pour les images metrics
     metrics_dir.mkdir(parents=True, exist_ok=True)
+    
+    stage = None
         
     with mlflow.start_run(run_name=f"Training_{now}") as run:
         
-        client = mlflow.MlflowClient()
-        ########################## éléments pour simuler un scheduleur avec augmantation du dataset ##############
-        nb_case = 100
+        print("Tracking URI:", mlflow.get_tracking_uri())
+        print("Artifact URI:", mlflow.get_artifact_uri())
         
+        client = mlflow.MlflowClient()
+        ########################## éléments pour simuler un scheduleur avec augmantation du dataset ##############        
         with open("training_dataset_size.txt", "r") as f:
             nb_case = f.read()
         
         print(f"{nb_case = }")
         epochs = 10
         
-        # tirage aléatoire pour savoir si on augmente le nombre de cas ou le nombre d'epochs
-        x = random.randint(0, 1)
-        if x == 0:
-            nb_case = int(nb_case) + 100
-            with open("training_dataset_size.txt", "w") as f:
-                f.write(str(nb_case))
-        else:
-            epochs = epochs + 2
-        
-        
+        # tirage aléatoire pour savoir de cmbien on augmente de dataset
+        x = random.randint(0, 50)
+
+        nb_case = int(nb_case) + x
+        with open("training_dataset_size.txt", "w") as f:
+            f.write(str(nb_case))
+        ###########################################################################################################
+        print(f"{nb_case = }")
         if training_parameters:
             # alimentation des paramêtres d'entrainements
+            print("Log des parametres")
             log_training_parameters(training_parameters)
             
+            print("load data from S3")
             model.load_data_from_s3(cache_dir)
+            #model.load_data()
             
             mlflow.log_param("oversampling_strategy", "metadata_duplication")
             mlflow.log_param("augmentation_on_oversample_only", True)
             mlflow.log_param("oversample_ratio", model.oversampling_ratio)
             mlflow.log_param("augmentation_ops", "flip,rotate,zoom,brightness")
             
+            # Start du chronomètre d'entrainement
+            start_time = time.time()
+            # incrémentation du nombre d'entrainement
+            TRAINING_RUNS.inc()
+            
+            print("entrainement")
+            # entrainement
             model.fit(epochs=epochs)
             
+            # log du temps d'entrainement
+            duration = time.time() - start_time
+            TRAINING_DURATION.observe(duration)
+            
+            print("Prédiction")
             model.predict()
             classif = model.metrics["classification_report"]
             conf = model.metrics["confusion_matrix"]
             
+            print("Récupération des metrics de prod")
             training_log_prod = asyncio.run(get_metrics_model_by_stage("prod"))
             
             prod_run = client.search_runs(
@@ -89,6 +131,7 @@ def train_model_mlflow():
                 filter_string='tags.stage = "candidate"'
             )
             
+            print("Récupération des metrics d'entrainement")
             if training_log_prod:
                 if classif["1"]["recall"] > training_log_prod["class_1_recall"]:
                     stage = "candidate"
@@ -100,11 +143,13 @@ def train_model_mlflow():
             else:
                 stage = "prod"
                 
-                
+            print("Dtermination du stage")    
             # mise à jour des tags de prod et candidate
             if stage == "candidate" and candidate_run is None:
+                print("pas de modification de stage")
                 pass
             elif stage == "candidate" and candidate_run is not None:
+                print("Passage de prod à archived et de candidate à prod avec nouveau modèle candidat")
                 client.set_tag(prod_run[0].info.run_id, "stage", "archived")
                 client.set_tag(candidate_run[0].info.run_id, "stage", "prod")
                 # mise à jour en base
@@ -124,6 +169,7 @@ def train_model_mlflow():
                     stage="Production"
                 )
             elif stage == "rejected" and candidate_run is not None:
+                print("Passage de prod à archived et de candidate à prod avec reject du nouveau modèle")
                 client.set_tag(prod_run[0].info.run_id, "stage", "archived")
                 client.set_tag(candidate_run[0].info.run_id, "stage", "prod")
                 # mise à jour en base
@@ -145,6 +191,27 @@ def train_model_mlflow():
                     stage="Production"
                 )
 
+            print("extraction des metrics d'entrainement")
+            # Récupération des métrics
+            try:
+                class_0_precision = float(classif["0"]["precision"])
+                class_0_recall = float(classif["0"]["recall"])
+                class_0_f1 = float(classif["0"]["f1-score"])
+            except:
+                class_0_precision = 0.0
+                class_0_recall = 0.0
+                class_0_f1 = 0.0
+                
+            try:
+                class_1_precision = float(classif["1"]["precision"])
+                class_1_recall = float(classif["1"]["recall"])
+                class_1_f1 = float(classif["1"]["f1-score"])
+            except:
+                class_1_precision = 0.0
+                class_1_recall = 0.0
+                class_1_f1 = 0.0
+            
+            print("préparation du training_log")
             # Alimentation des metrics d'entrainement dans la base de données
             training_log = {"training_date": datetime.strptime(now, "%Y-%m-%d-%H-%M-%f").isoformat(),
                     "model_name":model_name,
@@ -154,12 +221,12 @@ def train_model_mlflow():
                     "validation_size": model.nb_validation_data,
                     "epochs_number": len(model.history.history["loss"]),
                     "accuracy": float(model.metrics["accuracy"]),
-                    "class_0_precision": float(classif["0"]["precision"]),
-                    "class_0_recall": float(classif["0"]["recall"]),
-                    "class_0_f1": float(classif["0"]["f1-score"]),
-                    "class_1_precision": float(classif["1"]["precision"]),
-                    "class_1_recall": float(classif["1"]["recall"]),
-                    "class_1_f1": float(classif["1"]["f1-score"]),
+                    "class_0_precision": class_0_precision,
+                    "class_0_recall": class_0_recall,
+                    "class_0_f1": class_0_f1,
+                    "class_1_precision": class_1_precision,
+                    "class_1_recall": class_1_recall,
+                    "class_1_f1": class_1_f1,
                     "true_class_0": int(conf.loc[0,0]),
                     "false_class_0": int(conf.loc[0,1]),
                     "true_class_1": int(conf.loc[1,1]),
@@ -167,9 +234,13 @@ def train_model_mlflow():
                     "modification_date": datetime.strptime(now, "%Y-%m-%d-%H-%M-%f").isoformat()
                     }
             
+            print("log des metrics dans mlflow")
             # log des metrics 
-            mlflow.log_metric("class_1_recall", float(classif["1"]["recall"]))
+            mlflow.log_metric("class_1_recall", class_1_recall)
             mlflow.log_metric("accuracy",float(model.metrics["accuracy"]))
+            # log dans prometheus/grafan
+            MODEL_ACCURACY.set(float(model.metrics["accuracy"]))
+            MODEL_CLASS_1_RECALL.set(class_1_recall)
             
             # log du graphique d'entrainement
             plt.figure()
@@ -197,19 +268,20 @@ def train_model_mlflow():
             pd.DataFrame(classif).to_csv("./metrics/classification_report.csv")
             pd.DataFrame(conf).to_csv("./metrics/confusion_matrix.csv")
 
-            mlflow.log_artifact("./metrics/classification_report.csv", artifact_path="classification_report")
-            mlflow.log_artifact("./metrics/confusion_matrix.csv", artifact_path="confusion_matrix")
+            print("logs des artifacts dans mlflow")
+            mlflow.log_artifact("metrics/classification_report.csv", artifact_path="classification_report")
+            mlflow.log_artifact("metrics/confusion_matrix.csv", artifact_path="confusion_matrix")
             
             # log des metrics en graphique
             plt.figure(figsize=(5,4))
             sns.heatmap(conf, annot=True, fmt='d', cmap='Blues')
             plt.title("Confusion Matrix")
             plt.savefig("./metrics/confusion_matrix.png")
-            mlflow.log_artifact("./metrics/confusion_matrix.png", artifact_path="confusion_matrix")
+            mlflow.log_artifact("metrics/confusion_matrix.png", artifact_path="confusion_matrix")
             
             fig = plot_classification_report(classif)
             fig.savefig("./metrics/classification_report_plot.png")
-            mlflow.log_artifact("./metrics/classification_report_plot.png", artifact_path="classification_report")
+            mlflow.log_artifact("metrics/classification_report_plot.png", artifact_path="classification_report")
             plt.close(fig)
             
             # on enregistre les metrics
@@ -224,6 +296,7 @@ def train_model_mlflow():
             mlflow.log_param("dvc_dataset_hash", get_dvc_hash(f"dataset.dvc"))
             mlflow.log_param("dvc_metrics_hash", get_dvc_hash(f"metrics.dvc"))
             
+            print("registring du model")
             # Alimentation du model dans MLFlow
             mlflow.set_tag("type", "model")
             mlflow.set_tag("status", stage)
@@ -252,13 +325,13 @@ def train_model_mlflow():
                 shutil.rmtree(cache_dir_path)
 
         else:
-            raise ValueError("Aucun paamêtre trouvé dans la table parameters")
+            raise ValueError("Aucun paramêtre trouvé dans la table parameters")
         
 def create_model_instance(training_parameters, model_name):
     
     # Entrainement du modèle
     model = EfficientNetv2B0_model_augmented(   
-                    data_folder="",
+                    data_folder=DATA_DIR / DATASET_DIR_NAME,
                     save_model_folder=Path("models"),
                     model_name=model_name,
                     img_size=(int(training_parameters["img_width"]), int(training_parameters["img_height"])),

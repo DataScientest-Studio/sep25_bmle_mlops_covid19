@@ -97,47 +97,7 @@ class Base_model(ABC):
     def load_data(self):
         """Chargement du dataset à partir d’un dossier structuré (classes = sous-dossiers)."""
 
-        if self.oversampling:
-            if self.gray:
-                train_ds = image_dataset_from_directory(
-                    f"{self.data_folder}/train",
-                    seed=self.random_state,
-                    image_size=self.img_size,
-                    batch_size=self.batch_size,
-                    label_mode="categorical",
-                    color_mode="grayscale",
-                    shuffle=True
-                )
-
-                val_ds = image_dataset_from_directory(
-                    f"{self.data_folder}/test",
-                    seed=self.random_state,
-                    image_size=self.img_size,
-                    batch_size=self.batch_size,
-                    label_mode="categorical",
-                    color_mode="grayscale",
-                    shuffle=False  
-                )
-            else:
-                train_ds = image_dataset_from_directory(
-                    f"{self.data_folder}/train",
-                    seed=self.random_state,
-                    image_size=self.img_size,
-                    batch_size=self.batch_size,
-                    label_mode="categorical",
-                    shuffle=True
-                )
-
-                val_ds = image_dataset_from_directory(
-                    f"{self.data_folder}/test",
-                    seed=self.random_state,
-                    image_size=self.img_size,
-                    batch_size=self.batch_size,
-                    label_mode="categorical",
-                    shuffle=False
-                )
-        else:
-            if self.gray:
+        if self.gray:
                 train_ds = image_dataset_from_directory(
                     self.data_folder,
                     validation_split= 1 - self.train_size,
@@ -161,7 +121,7 @@ class Base_model(ABC):
                     color_mode="grayscale",
                     shuffle=False  
                 )
-            else:
+        else:
                 train_ds = image_dataset_from_directory(
                     self.data_folder,
                     validation_split=1 - self.train_size,

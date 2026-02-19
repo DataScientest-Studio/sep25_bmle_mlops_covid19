@@ -51,6 +51,8 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__WEBSERVER__SECRET_KEY: "supersecretkey"
+      AIRFLOW__METRICS__STATSD_ON: "True"
+      AIRFLOW__METRICS__STATSD_HOST: "prometheus"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
@@ -81,14 +83,14 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__METRICS__STATSD_ON: "True"
+      AIRFLOW__METRICS__STATSD_HOST: "prometheus"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
     command: airflow scheduler
     networks:
       - docker-mlops-covid19
-
-
 
   # -------------------------------
   # MLflow
@@ -106,9 +108,36 @@ services:
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:////mlflow/backend_store/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --default-artifact-root mlflow-artifacts:/
       --serve-artifacts
       --allowed-hosts "*"
+    networks:
+      - docker-mlops-covid19
+
+  # -------------------------------
+  # prometheus
+  # -------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - docker-mlops-covid19
+
+  # -------------------------------
+  # grafana
+  # -------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
     networks:
       - docker-mlops-covid19
 
@@ -127,8 +156,6 @@ services:
     - ./metrics:/app/metrics
     - ./models:/app/models
     - ./dataset:/app/dataset
-    - ./mlflow/mlruns:/mlflow/artifacts
-    - ./backend_store:/mlflow
     - ./.dvc:/.dvc
     - ./training_dataset_size.txt:/app/training_dataset_size.txt
     networks:
@@ -172,3 +199,5 @@ volumes:
   postgres-db-volume:
   mlflow-artifacts:
   mlflow-backend:
+  grafana-storage:
+  prometheus-data:
