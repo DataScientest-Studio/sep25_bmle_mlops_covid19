@@ -17,6 +17,7 @@ if str(_STREAMLIT_DIR) not in sys.path:
 
 from diagram_images import (
     diagram_architecture,
+    diagram_chargement_dataset,
     diagram_flux_donnees,
     diagram_pipeline,
     diagram_endpoints,
@@ -153,83 +154,181 @@ Enfin, une **interface clinique** (Streamlit) permet à un médecin de charger u
 
 
 def slide_donnees():
-    st.markdown("# Données & Dataset")
+    st.markdown("# Data Engineering & Governance")
     st.markdown("---")
-    st.markdown("### Source des données")
+
+    st.markdown("### Acquisition & Versionnement des données")
     st.markdown("""
-Les données proviennent du **COVID-19 Radiography Dataset**, disponible sur Kaggle. Il s’agit de **radiographies thoraciques** (clichés X-ray) déjà étiquetées par des experts : **COVID** (présence de signes évocateurs) ou **Non-COVID**. Ce dataset est utilisé à la fois pour l’entraînement initial du modèle et comme référence pour évaluer les performances.
+    Les données initiales proviennent du COVID-19 Radiography Dataset (Kaggle).
+    Le téléchargement est automatisé via l’API Kaggle avec gestion sécurisée des credentials.
+
+    Chaque run d’entraînement est associé à une configuration précise,
+    et les métadonnées dataset sont tracées dans MLflow afin d’assurer
+    la reproductibilité complète des expérimentations.
     """)
-    st.markdown("### Structuration du pipeline de données")
+
+    st.markdown("### Pipeline de préparation reproductible")
     st.markdown("""
-Le pipeline ne suppose pas que les données sont déjà organisées. Il **télécharge** le dataset via l’API Kaggle (en s’appuyant sur un fichier `.kaggle/kaggle.json` contenant les identifiants). Ensuite, les images sont **structurées** en répertoires : un dossier train et un dossier test, chacun contenant des sous-dossiers par classe (`train/0`, `train/1`, `test/0`, `test/1`). Enfin, comme la classe COVID est en général **minoritaire**, on applique un **oversampling** (par exemple ×4) sur la classe positive, avec de l’**augmentation** (rotation, translation) pour éviter les doublons exacts et améliorer la généralisation. Tout cela est automatisé pour que l’entraînement soit reproductible.
-Le pipeline ne suppose pas que les données sont déjà organisées. Il **télécharge** le dataset via l’API Kaggle (en s’appuyant sur un fichier `.kaggle/kaggle.json` contenant les identifiants). Ensuite, les images sont **structurées** en répertoires : un dossier train et un dossier test, chacun contenant des sous-dossiers par classe (`train/0`, `train/1`, `test/0`, `test/1`). Enfin, comme la classe COVID est en général **minoritaire**, on applique un **oversampling proportionnel à la différence de classe**, avec de l’**augmentation** (rotation, translation) pour éviter les doublons exacts et améliorer la généralisation. Tout cela est automatisé pour que l’entraînement soit reproductible.
+    Les données sont automatiquement structurées en train/test.
+
+    Nous intégrons :
+    - un oversampling contrôlé de la classe minoritaire,
+    - de l’augmentation d’images,
+    - une normalisation cohérente.
+
+    Ces étapes sont versionnées et tracées dans MLflow :
+    paramètres, métriques, artefacts.
+    On garantit ainsi qu’un modèle peut être reconstruit à partir d’un run donné.
     """)
-    st.markdown("### Données en production et enrichissement")
+
+    st.markdown("### Données en production & Feedback Loop")
     st.markdown("""
-En production, les images et les labels ne restent pas figés. Une table **images_dataset** (hébergée sur Supabase) stocke les images utilisées en prédiction et leur **label** : on y enregistre l’URL de l’image, le type de classe (COVID / Non-COVID), et la date d’injection. Les fichiers image sont stockés dans **Supabase Storage** ou **S3/Backblaze** selon la configuration d’environnement. L’entraînement peut ensuite être relancé en prenant les données **depuis cette base** (paramètres `data_source=db`, `db_table=images_dataset`), ce qui permet d’intégrer les nouvelles images et les diagnostics médecins. Ainsi, le dataset s’enrichit au fil de l’usage et le modèle peut être ré-entraîné sur des données plus représentatives du terrain.
+    En production, les images et labels sont stockés dans Supabase.
+
+    Chaque prédiction validée via l’endpoint /feedback
+    alimente la base et déclenche potentiellement un ré-entraînement planifié.
+
+    On met ainsi en place une boucle d’amélioration continue :
+    Data → Model → Feedback → Data.
     """)
-    st.markdown("**Flux des données**")
+
+    _show_diagram(diagram_chargement_dataset())
     _show_diagram(diagram_flux_donnees())
 
 
 def slide_modele():
-    st.markdown("# Modèle & Architecture")
+    st.markdown("# Model Engineering & Tracking")
     st.markdown("---")
-    st.markdown("### Choix du modèle")
+
+    st.markdown("### Architecture & Standardisation")
     st.markdown("""
-Le modèle retenu est **EfficientNetV2-B0**, implémenté avec TensorFlow et Keras. Cette architecture est adaptée à la **classification d’images** de taille modérée : elle offre un bon compromis entre précision et coût de calcul. Dans le projet, les images sont chargées en **couleur (RGB)** et redimensionnées en **299×299** avant inférence/entraînement. Le modèle est encapsulé dans une classe dédiée qui ajoute des couches de **prétraitement** et de l’**augmentation de données** (rotation, translation, etc.) directement dans le graphe, avec une **sortie binaire** (COVID / Non-COVID).
+    Le modèle repose sur EfficientNetV2-B0, encapsulé dans une classe dédiée.
+
+    Le prétraitement et l’augmentation sont intégrés au graphe,
+    ce qui garantit une cohérence totale entre entraînement et inférence.
     """)
-    st.markdown("### Paramètres principaux d’entraînement")
+
+    st.markdown("### Tracking avec MLflow")
     st.markdown("""
-Les images sont traitées en **RGB 299×299**, conformément à l’architecture EfficientNetV2-B0 retenue. Pour éviter le surapprentissage et stabiliser l’apprentissage, on utilise des **callbacks** : un **early stopping** (arrêt si la métrique ne progresse plus) et une **réduction du learning rate** sur plateau. Chaque modèle entraîné est **sauvegardé** dans le dossier `src/models/` avec un **horodatage** dans le nom du fichier (format du type YYMM-MM-DD-HH-MM-SS), ce qui permet de tracer et de reprendre une version donnée.
+    Chaque entraînement est loggé dans MLflow :
+
+    - hyperparamètres,
+    - métriques (accuracy, recall),
+    - artefacts (modèle, courbes, metrics complet),
+    - version du dataset.
+
+    MLflow agit ici comme :
+    - registre d’expérimentations,
+    - outil de comparaison de runs,
+    - Model Registry pour promotion en production.
     """)
-    st.markdown("### Interprétabilité : Grad-CAM")
+
+    st.markdown("### Gouvernance & Versioning")
     st.markdown("""
-En contexte médical, il est crucial de comprendre **sur quelles zones de l’image** le modèle s’appuie pour sa décision. La méthode **Grad-CAM** (Gradient-weighted Class Activation Mapping) produit des **cartes de chaleur** : en utilisant les gradients de la couche convolutive finale par rapport à la classe prédite, on met en évidence les régions les plus « actives ». Ces cartes sont superposées à l’image originale dans l’interface clinique, ce qui permet au médecin de vérifier si le modèle se concentre sur des zones anatomiquement pertinentes (par exemple les poumons) et d’ajuster sa confiance dans la prédiction.
+    Les modèles sont versionnés automatiquement.
+
+    Un modèle validé peut être promu dans le Model Registry MLflow,
+    ce qui permet :
+    - rollback,
+    - AB test,
+    - staging → production,
+    - traçabilité complète.
     """)
 
 
 def slide_pipeline_entrainement():
-    st.markdown("# Pipeline d'entraînement")
+    st.markdown("# Orchestration & Automatisation")
     st.markdown("---")
-    st.markdown("### Enchaînement automatique (méthode execute)")
+
+    st.markdown("### Orchestration avec Airflow")
     st.markdown("""
-Le pipeline d’entraînement est conçu pour être **automatique et reproductible**. La méthode centrale `model.execute(epochs=200)` enchaîne les étapes suivantes sans intervention manuelle : **(1) load_data** — chargement et structuration des données, en mode **dev local** depuis le dataset Kaggle préparé, ou en mode **prod** depuis **Supabase + Backblaze/S3** (table `images_dataset` et URLs image) ; **(2) fit** — entraînement du modèle avec les callbacks (early stopping, réduction du learning rate) ; **(3) save** — sauvegarde du modèle avec horodatage dans `src/models/` ; **(4) evaluate** — calcul des métriques (précision, rappel, F1, etc.) sur le jeu de test ; **(5) predict** — génération de prédictions de démonstration ; **(6) gradcam** — génération de cartes Grad-CAM sur un échantillon pour l’interprétation. Ainsi, en une seule commande, on obtient un modèle entraîné, évalué, sauvegardé et documenté.
+    Le pipeline d’entraînement est orchestré via Apache Airflow.
+
+    Un DAG structure les étapes :
+    1. Extraction / préparation des données
+    2. Entraînement
+    3. Logging MLflow
+    4. Validation
+    5. Promotion éventuelle du modèle
+
+    Cela permet :
+    - planification automatique,
+    - gestion des dépendances,
+    - monitoring des jobs.
     """)
-    st.markdown("**Pipeline `execute()`**")
+
+    st.markdown("### Containerisation avec Docker")
+    st.markdown("""
+    L’ensemble des composants (API, entraînement, MLflow, Airflow)
+    est containerisé avec Docker.
+
+    Cela garantit :
+    - portabilité,
+    - reproductibilité environnementale,
+    - déploiement simplifié sur tout environnement.
+    """)
+
+    st.markdown("### Déclenchement")
+    st.markdown("""
+    Le pipeline peut être déclenché :
+    - automatiquement via Airflow,
+    - manuellement via l’endpoint /train.
+
+    On est donc sur un système automatisé,
+    et non sur un entraînement manuel type notebook.
+    """)
+    
     _show_diagram(diagram_pipeline())
-    st.markdown("### Déclenchement via API (POST /train)")
-    st.markdown("""
-L’entraînement n’est pas réservé à une exécution locale : l’**API REST** expose un endpoint **POST /train** qui appelle la fonction `train_and_save()` avec des paramètres optionnels (nombre d’epochs, source des données, table, limite de lignes, application de masques, etc.). Dans l’architecture cible, ce flux est **orchestré via MLflow** (tracking des runs, métriques et artefacts), avec déclenchement possible par CI/CD, cron job ou script d’exploitation dès que de nouvelles données terrain sont disponibles.
-    """)
 
 
 def slide_api():
-    st.markdown("# API & Exposition du modèle")
+    st.markdown("# Model Serving & Observability")
     st.markdown("---")
-    st.markdown("### Stack et rôle de l’API")
+
+    st.markdown("### API & Serving")
     st.markdown("""
-L’API est construite avec **FastAPI** : elle est **asynchrone**, performante, et génère automatiquement une **documentation OpenAPI** (Swagger) que les consommateurs peuvent utiliser pour tester les endpoints. Son rôle est d’**exposer le modèle** et les fonctionnalités du pipeline (entraînement, prédiction, feedback) de manière standardisée, sécurisée et déployable derrière un reverse proxy ou un load balancer.
+    Le modèle est exposé via FastAPI,
+    containerisé et déployable derrière un reverse proxy.
+
+    Les endpoints couvrent :
+    - prédiction,
+    - Grad-CAM,
+    - ré-entraînement,
+    - feedback.
     """)
-    st.markdown("### Dockerisation des services")
+
+    st.markdown("### Monitoring avec Prometheus & Grafana")
     st.markdown("""
-La mise en production est prévue avec une séparation claire des responsabilités par image Docker : **`train_model_api`** regroupe les endpoints et dépendances liés à l’entraînement, **`predict_api`** regroupe les endpoints de prédiction (dont Grad-CAM et feedback), et **`streamlit_clinic_app`** héberge l’interface clinique utilisée par les médecins. Cette séparation facilite le scaling indépendant (ex: plus de réplicas pour la prédiction), la maintenance et les déploiements progressifs.
+    Les métriques applicatives sont exposées à Prometheus :
+
+    - latence des prédictions,
+    - nombre de requêtes,
+    - metrics d'entrainement
+    - statut du modèle actif.
+
+    Grafana permet de visualiser ces métriques
+    et de surveiller la santé globale du système.
+
+    On peut ainsi détecter :
+    - dégradation des performances,
+    - anomalies de trafic,
+    - dérive potentielle.
     """)
-    st.markdown("### Endpoints principaux")
+
+    st.markdown("### Observabilité complète")
     st.markdown("""
-- **GET /health** — Vérification de la santé de l’API (utile pour les sondes de déploiement).
-- **POST /train** — Lance l’entraînement avec des paramètres passés en JSON (epochs, source des données, table, etc.).
-- **POST /predict** — Envoi d’une image en fichier ; retour de la prédiction (classe et probabilités).
-- **POST /predict-with-gradcam** — Même chose que predict, mais en plus on retourne la **heatmap Grad-CAM** encodée en base64 ; des options permettent aussi d’enregistrer l’image et le label terrain dans la base, et de stocker l’image de prédiction en S3 selon la configuration.
-- **POST /predict-from-db** — Prédiction à partir d’un **image_id** : l’image est chargée depuis la table images_dataset (via son URL), ce qui permet de réutiliser des images déjà en base.
-- **POST /feedback** — Enregistrement du **diagnostic** du médecin (COVID, Non-COVID, Indécis) et d’un commentaire. Si un **image_id** est fourni, la table **images_dataset** est mise à jour avec ce diagnostic (le diagnostic fait foi pour le label), et une ligne est insérée dans la table **feedback** pour la traçabilité.
+    Nous avons donc trois niveaux de supervision :
+
+    - MLflow → performance modèle
+    - Airflow → santé des pipelines
+    - Prometheus/Grafana → monitoring runtime
+
+    Cela transforme le projet en système MLOps complet,
+    prêt pour un environnement de production réel.
     """)
-    st.markdown("**Endpoints (Client → API)**")
+
+    st.markdown("**Client → API → Model → Monitoring Stack**")
     _show_diagram(diagram_endpoints())
-    st.markdown("### Configuration et secrets")
-    st.markdown("""
-La connexion à la base et au stockage est configurée via un fichier **secrets.yaml** (non versionné) : on y indique l’URL REST Supabase et la clé API (de préférence la clé **service_role** pour les opérations côté serveur), et éventuellement des credentials **S3** si le stockage des images passe par un bucket S3. Les tables **images_dataset** et **feedback** sont hébergées sur Supabase (PostgreSQL) et accessibles via l’API REST PostgREST.
-    """)
 
 
 def slide_app_clinique():

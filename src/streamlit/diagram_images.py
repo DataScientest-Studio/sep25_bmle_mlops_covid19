@@ -117,15 +117,34 @@ def diagram_architecture() -> bytes:
 
     return _to_png(fig)
 
+def diagram_chargement_dataset() -> bytes:
+    """Flux des données : Chargement du dataset intitial."""
+    fig, ax = _make_canvas(16, 7)
+    y = 5.3
+    _soft_panel(ax, 0.4, 3.9, 11.5, 4.0)
+    _box(ax, 0.6, y, 2.1, 1.2, "Kaggle", 13)
+    _box(ax, 3.1, y, 2.8, 1.2, "Téléchargement\n+ structuration", 11)
+    _box(ax, 8.6, y+1, 3.1, 1.2, "Supabase\nimages_dataset", 11)
+    _box(ax, 8.6, y-1, 3.1, 1.2, "S3", 12)
+    _arrow(ax, 2.7, 5.9, 3.1, 5.9)
+    _arrow(ax, 5.9, 5.9, 8.6, y+1.5)
+    _arrow(ax, 5.9, 5.9, 8.6, y-0.5)
+
+    ax.text(6.7, y+1.2, "labels", fontsize=11, color=SUBTEXT)
+    ax.text(6.7, y-0.3, "images", fontsize=11, color=SUBTEXT)
+
+    ax.text(0.6, 8.8, "Flux des données", fontsize=18, weight="bold", color=TEXT)
+    ax.text(0.6, 8.35, "Chargement du dataset intitial", fontsize=11, color=SUBTEXT)
+    return _to_png(fig)
 
 def diagram_flux_donnees() -> bytes:
     """Flux des données : version courte et lisible."""
     fig, ax = _make_canvas(16, 7)
-    y = 5.3
+    y = 5.3 
     _soft_panel(ax, 0.4, 4.95, 15.0, 2.0)
-    _box(ax, 0.6, y, 2.1, 1.2, "Kaggle", 13)
-    _box(ax, 3.1, y, 2.8, 1.2, "Téléchargement\n+ structuration", 11)
-    _box(ax, 6.3, y, 2.5, 1.2, "Train/Test\n(0 & 1)", 12)
+    _box(ax, 0.6, y, 2.1, 1.2, "Supabase\nimages_dataset", 13)
+    _box(ax, 3.1, y, 2.8, 1.2, "Train/Test\n(0 & 1)", 12)
+    _box(ax, 6.3, y, 2.5, 1.2, "Streaming (lots batch) S3\n+ structuration", 11)
     _box(ax, 9.2, y, 2.6, 1.2, "Oversampling", 12)
     _box(ax, 12.2, y, 2.9, 1.2, "Entraînement", 13)
     _arrow(ax, 2.7, 5.9, 3.1, 5.9)
@@ -133,28 +152,50 @@ def diagram_flux_donnees() -> bytes:
     _arrow(ax, 8.8, 5.9, 9.2, 5.9)
     _arrow(ax, 11.8, 5.9, 12.2, 5.9)
 
-    _box(ax, 6.6, 2.0, 3.1, 1.2, "Supabase\nimages_dataset", 11)
-    _arrow(ax, 8.2, 3.2, 13.6, 5.3, dashed=True)
-    ax.text(9.2, 3.9, "data_source=db", fontsize=11, color=SUBTEXT)
-
     ax.text(0.6, 8.8, "Flux des données", fontsize=18, weight="bold", color=TEXT)
     ax.text(0.6, 8.35, "Préparation, enrichissement et réutilisation des données terrain", fontsize=11, color=SUBTEXT)
     return _to_png(fig)
 
 
 def diagram_pipeline() -> bytes:
-    """Pipeline execute() en 6 étapes."""
-    fig, ax = _make_canvas(16, 5.5)
-    y = 4.0
-    _soft_panel(ax, 0.45, 3.75, 15.0, 1.75)
-    labels = ["load_data", "fit", "save", "evaluate", "predict", "gradcam"]
-    x = [0.7, 3.2, 5.7, 8.2, 10.7, 13.2]
-    for i, lb in enumerate(labels):
-        _box(ax, x[i], y, 2.1, 1.2, f"{i+1}. {lb}", 12)
-    for i in range(5):
-        _arrow(ax, x[i] + 2.1, 4.6, x[i + 1], 4.6)
-    ax.text(0.7, 8.8, "Pipeline d'entraînement (execute)", fontsize=18, weight="bold", color=TEXT)
-    ax.text(0.7, 8.35, "Exécution séquentielle automatisée en 6 étapes", fontsize=11, color=SUBTEXT)
+    """Pipeline d'entrainement avec logs MLflow."""
+
+    fig, ax = _make_canvas(16, 10)
+    y_top = 5.0     # pipeline d'entraînement
+    y_bottom = 2.0  # pipeline MLflow
+
+    # ------------------------
+    # Pipeline principal d'entrainement
+    # ------------------------
+    _soft_panel(ax, 0.45, y_top-0.3, 10.1, 1.75)
+    labels_train = ["load_data", "fit", "evaluate", "save"]
+    x_train = [0.7, 3.2, 5.7, 8.2]
+    for i, lb in enumerate(labels_train):
+        _box(ax, x_train[i], y_top, 2.1, 1.2, f"{i+1}. {lb}", 12)
+    for i in range(len(labels_train) - 1):
+        _arrow(ax, x_train[i] + 2.1, y_top + 0.6, x_train[i + 1], y_top + 0.6)
+
+    ax.text(0.7, y_top + 2.0, "Pipeline d'entraînement", fontsize=18, weight="bold", color=TEXT)
+    ax.text(0.7, y_top + 1.6, "Exécution séquentielle automatisée en 4 étapes", fontsize=11, color=SUBTEXT)
+
+    # ------------------------
+    # Pipeline MLflow empilé en dessous
+    # ------------------------
+    _soft_panel(ax, 0.45, y_bottom - 0.3, 10.1, 1.75)
+    labels_mlflow = ["log_params", "log_metrics", "log_artifacts", "register_model"]
+    x_mlflow = [0.7, 3.2, 5.7, 8.2]
+    for i, lb in enumerate(labels_mlflow):
+        _box(ax, x_mlflow[i], y_bottom, 2.1, 1.2, f"{i+1}. {lb}", 12)
+
+    ax.text(0.7, y_bottom -0.8, "Pipeline Logging & Model Tracking (MLflow)", fontsize=18, weight="bold", color=TEXT)
+    ax.text(0.7, y_bottom -1.2, "Collecte en parallèle des paramètres, métriques et artefacts", fontsize=11, color=SUBTEXT)
+
+    # ------------------------
+    # Optionnel : flèches verticales pour montrer la correspondance
+    # ------------------------
+    for i in range(len(labels_train)):
+        _arrow(ax, x_mlflow[i] + 1.05, y_top, x_train[i] + 1.05, y_bottom + 1.2)
+
     return _to_png(fig)
 
 

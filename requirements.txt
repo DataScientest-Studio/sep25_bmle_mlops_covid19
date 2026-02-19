@@ -18,3 +18,4 @@ PyYAML>=6.0
 mlflow==3.9.0
 dvc==3.3.0
 dvc[s3]==3.3.0
+prometheus-client==0.24.1
