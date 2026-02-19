@@ -59,6 +59,7 @@ async def predict_with_gradcam_endpoint(
     file: UploadFile = File(...),
     save_to_dataset: bool = False,
     dataset_class: Optional[str] = None,
+    store_prediction_s3: bool = False,
 ):
     """
     Prédiction + image + Grad-CAM.
@@ -72,6 +73,33 @@ async def predict_with_gradcam_endpoint(
         heatmap = np.array(result.pop("heatmap"), dtype=np.float32)
         result["heatmap_base64"] = _heatmap_to_base64_png(heatmap)
         result["image_base64"] = base64.b64encode(image_bytes).decode("ascii")
+
+        # Option explicite pour la démo : stocker l'image source de prédiction en S3.
+        if store_prediction_s3:
+            result["prediction_image_s3_saved"] = False
+            result["prediction_image_s3_url"] = None
+            try:
+                secrets_path = _get_secrets_path()
+                s3_settings = S3Settings(str(secrets_path))
+                bucket_name, access_key, secret_key = s3_settings.s3_access
+                if bucket_name and access_key and secret_key:
+                    ext = (Path(file.filename or "").suffix or ".png").lstrip(".").lower()
+                    if ext not in ("png", "jpg", "jpeg"):
+                        ext = "png"
+                    s3_url = upload_feedback_image(
+                        bucket_name=bucket_name,
+                        access_key=access_key,
+                        secret_key=secret_key,
+                        image_bytes=image_bytes,
+                        s3_prefix="predictions",
+                        extension=ext,
+                    )
+                    result["prediction_image_s3_saved"] = True
+                    result["prediction_image_s3_url"] = s3_url
+                else:
+                    result["prediction_image_s3_error"] = "Configuration S3 incomplète dans secrets.yaml."
+            except Exception as s3_exc:
+                result["prediction_image_s3_error"] = f"Upload S3 impossible: {str(s3_exc)[:200]}"
 
         if save_to_dataset:
             secrets_path = _get_secrets_path()
