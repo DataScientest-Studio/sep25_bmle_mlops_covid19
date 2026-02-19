@@ -134,6 +134,11 @@ def main():
             if raw:
                 st.session_state.uploaded_image_bytes = raw
     with col_opts:
+        store_prediction_s3 = st.checkbox(
+            "Stocker l'image de prédiction dans S3",
+            value=True,
+            help="Upload de l'image source vers S3 (dossier predictions/) au moment de la prédiction.",
+        )
         save_to_dataset = st.checkbox(
             "Enregistrer dans le dataset",
             value=True,
@@ -153,7 +158,10 @@ def main():
         with st.spinner("Prédiction en cours..."):
             try:
                 files = {"file": ("image.png", st.session_state.uploaded_image_bytes, "image/png")}
-                params = {"save_to_dataset": "true" if save_to_dataset else "false"}
+                params = {
+                    "save_to_dataset": "true" if save_to_dataset else "false",
+                    "store_prediction_s3": "true" if store_prediction_s3 else "false",
+                }
                 if save_to_dataset:
                     params["dataset_class"] = dataset_class_param
                 with httpx.Client(timeout=60.0) as client:
@@ -235,6 +243,12 @@ def main():
                 st.success(f"Image enregistrée dans la table images_dataset (id: {result.get('image_id', '—')}).")
             elif result.get("image_save_hint"):
                 st.error("Enregistrement en base échoué: " + result["image_save_hint"])
+        if "prediction_image_s3_saved" in result:
+            if result.get("prediction_image_s3_saved") and result.get("prediction_image_s3_url"):
+                st.success("Image de prédiction stockée dans S3.")
+                st.code(result["prediction_image_s3_url"])
+            elif result.get("prediction_image_s3_error"):
+                st.warning("Stockage S3 de l'image de prédiction échoué: " + result["prediction_image_s3_error"])
 
         diagnostic = st.selectbox(
             "Diagnostic du médecin",
