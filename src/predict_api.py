@@ -55,18 +55,21 @@ async def predict_with_gradcam_endpoint(
         heatmap = np.array(result.pop("heatmap"), dtype=np.float32)
         result["heatmap_base64"] = _heatmap_to_base64_png(heatmap)
         result["image_base64"] = base64.b64encode(image_bytes).decode("ascii")
-        print(f"{save_to_dataset = }")
         if save_to_dataset:
             secrets_path = _get_secrets_path()
+            print(f"{secrets_path = }")
             if secrets_path.exists():
                 image_url = None
                 storage_error = None
                 storage_error_saved = None
+                print("lets try!!")
                 try:
                     s3_settings = S3Settings(str(secrets_path))
                     bucket_name, access_key, secret_key = s3_settings.s3_access
+                    print(f"{bucket_name = }, {access_key = }, {secret_key =}")
                     if bucket_name and access_key and secret_key:
                         ext = (Path(file.filename or "").suffix or ".png").lstrip(".").lower()
+                        print(f"{ext = }")
                         if ext not in ("png", "jpg", "jpeg"):
                             ext = "png"
                         image_url = upload_feedback_image(
@@ -77,8 +80,9 @@ async def predict_with_gradcam_endpoint(
                             s3_prefix="feedback",
                             extension=ext,
                         )
-                except (KeyError, FileNotFoundError):
-                    pass
+                except (KeyError, FileNotFoundError) as e:
+                    print(e)
+                print(f"{image_url = }")
                 if not image_url:
                     db_settings = DatabaseSettings(str(secrets_path))
                     api_url, api_key = db_settings.database_url
@@ -94,6 +98,7 @@ async def predict_with_gradcam_endpoint(
                     image_url, storage_error = _supabase_storage_upload(
                         base_url, api_key, "images", object_path, image_bytes, f"image/{ext}"
                     )
+                print(f"{storage_error = }")
                 # Fallback si Storage a échoué : stocker l'image en data URL (à éviter : configurer Storage pour avoir de vraies URLs)
                 storage_error_saved = storage_error  # garder pour l'afficher à l'utilisateur
                 if not image_url and image_bytes and len(image_bytes) <= 1_000_000:
@@ -112,6 +117,7 @@ async def predict_with_gradcam_endpoint(
                         "class_type": class_type,
                         "injection_date": now,
                     }
+                    print("lets try again!!")
                     try:
                         inserted = await db.insert("images_dataset", img_row, return_representation=True)
                         image_id = inserted.get("id") if isinstance(inserted, dict) else None

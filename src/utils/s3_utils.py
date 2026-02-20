@@ -176,21 +176,23 @@ class S3ImageLoader:
 
         # charger image et mask depuis S3 ou cache
         img_path = self._load_from_s3(image_url)
-        mask_path = self._load_from_s3(mask_url)
+        #mask_path = self._load_from_s3(mask_url)
         
-        if img_path and mask_path:
+        #if img_path and mask_path:
+        if img_path:
             img = tf.io.read_file(img_path)
             img = tf.image.decode_png(img, channels=3)
             img = tf.image.convert_image_dtype(img, tf.float32)
             img = tf.image.resize(img, (image_width, image_heigh))
 
-            mask = tf.io.read_file(mask_path)
-            mask = tf.image.decode_png(mask, channels=1)
-            mask = tf.image.convert_image_dtype(mask, tf.float32)
-            mask = tf.image.resize(mask, (image_width, image_heigh))
+            #mask = tf.io.read_file(mask_path)
+            #mask = tf.image.decode_png(mask, channels=1)
+            #mask = tf.image.convert_image_dtype(mask, tf.float32)
+            #mask = tf.image.resize(mask, (image_width, image_heigh))
 
             # appliquer le mask sur l'image
-            masked = img * mask
+            #masked = img * mask
+            masked = img
             
             masked = masked / 255.0
 

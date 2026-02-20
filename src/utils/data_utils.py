@@ -37,24 +37,21 @@ def plot_classification_report(classification_report_dict, figsize=(6, 3)):
     plt.tight_layout()
     return fig
 
-def load_dataset_by_classes(dataset_path: str) -> list:
+def load_dataset_by_classes(dataset_path: str) -> dict:
     
-    CLASSES = ['COVID', 'Lung_Opacity', 'Normal', 'Viral Pneumonia', "Autre"]  # classes du dataset
+    CLASSES = ['COVID', 'Lung_Opacity', 'Normal', 'Viral Pneumonia']  # classes du dataset
 
     class_0 = []
     class_1 = []
-    class_2 = []
     
     for cls in CLASSES:  # boucle classes
-        class_path = dataset_path / cls  # répertoire cible
+        class_path = Path(dataset_path) / cls  # répertoire cible
         if cls == "COVID":
             class_1.append(class_path)
-        elif cls == "Autre":
-            class_2.append(class_path)
         else:
             class_0.append(class_path)
                     
-    return {"0":class_0, "1": class_1, "2": class_2}
+    return {"0":class_0, "1": class_1}
 
 # ----------------------------------------------------------------------
 # Organisation d'un dataset avec plusieurs dossiers pour une classe

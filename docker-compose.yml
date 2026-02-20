@@ -101,14 +101,14 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - mlflow-artifacts:/mlflow/artifacts
-      - mlflow-backend:/mlflow/backend_store
+    - ./mlflow/artifacts:/mlflow/artifacts 
+    - ./mlflow/backend_store:/mlflow/backend_store
     command: >
       mlflow server
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:////mlflow/backend_store/mlflow.db
-      --default-artifact-root mlflow-artifacts:/
+      --default-artifact-root /mlflow/artifacts
       --serve-artifacts
       --allowed-hosts "*"
     networks:
@@ -150,6 +150,10 @@ services:
       target: train-model-api
     ports:
       - "8001:8000"
+    depends_on:
+      - mlflow
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
     image: train-model-api:latest
     container_name: train-model-api
     volumes:
@@ -158,8 +162,10 @@ services:
     - ./dataset:/app/dataset
     - ./.dvc:/.dvc
     - ./training_dataset_size.txt:/app/training_dataset_size.txt
+    - ./data:/app/data
     networks:
       - docker-mlops-covid19
+    restart: unless-stopped
 
   # -------------------------------
   # Predict API
@@ -187,7 +193,7 @@ services:
       target: streamlit-clinic-app
     image: streamlit-clinic-app:latest
     ports:
-    - "8501:8501"
+    - "8502:8502"
     container_name: streamlit-clinic-app
     networks:
       - docker-mlops-covid19 
@@ -197,7 +203,5 @@ networks:
 
 volumes:
   postgres-db-volume:
-  mlflow-artifacts:
-  mlflow-backend:
   grafana-storage:
   prometheus-data:
