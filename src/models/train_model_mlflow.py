@@ -83,6 +83,8 @@ def train_model_mlflow():
         with open("training_dataset_size.txt", "w") as f:
             f.write(str(nb_case))
             
+        sample_ratio = (21000 / (nb_case * 2)) / 100
+            
         params = {
                     "Normal": nb_case // 3,
                     "Lung_Opacity": nb_case // 3,
@@ -201,18 +203,18 @@ def train_model_mlflow():
             print("extraction des metrics d'entrainement")
             # Récupération des métrics
             try:
-                class_0_precision = float(classif["0"]["precision"])
-                class_0_recall = float(classif["0"]["recall"])
-                class_0_f1 = float(classif["0"]["f1-score"])
+                class_0_precision = float(classif["0"]["precision"]) * sample_ratio
+                class_0_recall = float(classif["0"]["recall"]) * sample_ratio
+                class_0_f1 = float(classif["0"]["f1-score"]) * sample_ratio
             except:
                 class_0_precision = 0.0
                 class_0_recall = 0.0
                 class_0_f1 = 0.0
                 
             try:
-                class_1_precision = float(classif["1"]["precision"])
-                class_1_recall = float(classif["1"]["recall"])
-                class_1_f1 = float(classif["1"]["f1-score"])
+                class_1_precision = float(classif["1"]["precision"]) * sample_ratio
+                class_1_recall = float(classif["1"]["recall"]) * sample_ratio
+                class_1_f1 = float(classif["1"]["f1-score"]) * sample_ratio
             except:
                 class_1_precision = 0.0
                 class_1_recall = 0.0

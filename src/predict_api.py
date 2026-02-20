@@ -64,8 +64,10 @@ async def predict_with_gradcam_endpoint(
                 storage_error_saved = None
                 print("lets try!!")
                 try:
+                    print("init S3Settings")
                     s3_settings = S3Settings(str(secrets_path))
-                    bucket_name, access_key, secret_key = s3_settings.s3_access
+                    print("s3_access")
+                    bucket_name, access_key, secret_key, b2_endpoint = s3_settings.s3_access
                     print(f"{bucket_name = }, {access_key = }, {secret_key =}")
                     if bucket_name and access_key and secret_key:
                         ext = (Path(file.filename or "").suffix or ".png").lstrip(".").lower()
@@ -81,7 +83,7 @@ async def predict_with_gradcam_endpoint(
                             extension=ext,
                         )
                 except (KeyError, FileNotFoundError) as e:
-                    print(e)
+                    print("erreur:",e)
                 print(f"{image_url = }")
                 if not image_url:
                     db_settings = DatabaseSettings(str(secrets_path))
@@ -119,7 +121,7 @@ async def predict_with_gradcam_endpoint(
                     }
                     print("lets try again!!")
                     try:
-                        inserted = await db.insert("images_dataset", img_row, return_representation=True)
+                        inserted = await db.insert("images_dataset", img_row)
                         image_id = inserted.get("id") if isinstance(inserted, dict) else None
                         result["image_id"] = image_id
                         result["image_saved"] = True
