@@ -30,6 +30,10 @@ Le pipeline prend en charge automatiquement :
     │   └── utils/
     │       ├── data_utils.py
     │       └── image_utils.py
+    │   └── script/   
+    │       ├── setup.bat                      # build et déploie les container
+    │       └── create_tables.sql              # script de création des tables
+    │       └── init_parameters.sql            # initialise la table parameters
     │
     └── main.py                               # Script principal
 
