@@ -17,13 +17,14 @@ import yaml
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from src.models.models_to_test import EfficientNetv2B0_model_augmented
-from src.utils.data_utils import plot_classification_report
+from src.utils.data_utils import organize_custom_dataset, plot_classification_report
 from src.utils.database_utils import get_parameters, post_metrics, get_metrics_model_by_stage, update_stage
 from src.utils.mlflow_utils import  log_training_parameters
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATASET_DIR_NAME = "structured_dataset"
+ORIGINAL_DATASET_NAME = "COVID-19_Radiography_Dataset_init"
 
 TRAINING_RUNS = Counter(
     "training_runs_total",
@@ -48,7 +49,7 @@ TRAINING_DURATION = Histogram(
 def train_model_mlflow():
     now = datetime.now().strftime("%Y-%m-%d-%H-%M-%f")
     mlflow.set_tracking_uri("http://mlflow:5000")
-    mlflow.set_experiment(f"COVID_19_project")
+    mlflow.set_experiment(f"COVID_19_project_training_experiments")
     
     training_parameters = asyncio.run(get_parameters())
     
@@ -67,9 +68,6 @@ def train_model_mlflow():
         
     with mlflow.start_run(run_name=f"Training_{now}") as run:
         
-        print("Tracking URI:", mlflow.get_tracking_uri())
-        print("Artifact URI:", mlflow.get_artifact_uri())
-        
         client = mlflow.MlflowClient()
         ########################## éléments pour simuler un scheduleur avec augmantation du dataset ##############        
         with open("training_dataset_size.txt", "r") as f:
@@ -78,12 +76,21 @@ def train_model_mlflow():
         print(f"{nb_case = }")
         epochs = 10
         
-        # tirage aléatoire pour savoir de cmbien on augmente de dataset
-        x = random.randint(0, 50)
+        # tirage aléatoire pour savoir de combien on augmente de dataset
+        x = random.randint(0, 20)
 
-        nb_case = int(nb_case) + x
+        nb_case = int(nb_case) + (x * 3)
         with open("training_dataset_size.txt", "w") as f:
             f.write(str(nb_case))
+            
+        params = {
+                    "Normal": nb_case // 3,
+                    "Lung_Opacity": nb_case // 3,
+                    "Viral Pneumonia": nb_case // 3,
+                    "COVID": nb_case 
+                }
+            
+        organize_custom_dataset(dataset_path=str(DATA_DIR / ORIGINAL_DATASET_NAME), output_root=str(DATA_DIR / DATASET_DIR_NAME), images_by_folder=params, replace=True)
         ###########################################################################################################
         print(f"{nb_case = }")
         if training_parameters:
@@ -92,8 +99,8 @@ def train_model_mlflow():
             log_training_parameters(training_parameters)
             
             print("load data from S3")
-            model.load_data_from_s3(cache_dir)
-            #model.load_data()
+            #model.load_data_from_s3(cache_dir)
+            model.load_data()
             
             mlflow.log_param("oversampling_strategy", "metadata_duplication")
             mlflow.log_param("augmentation_on_oversample_only", True)
@@ -125,12 +132,12 @@ def train_model_mlflow():
                 experiment_ids=["1"],
                 filter_string='tags.stage = "prod"'
             )
-            
+            print(f"{prod_run = }")
             candidate_run = client.search_runs(
                 experiment_ids=["1"],
                 filter_string='tags.stage = "candidate"'
             )
-            
+            print(f"{candidate_run = }")
             print("Récupération des metrics d'entrainement")
             if training_log_prod:
                 if classif["1"]["recall"] > training_log_prod["class_1_recall"]:
@@ -143,12 +150,12 @@ def train_model_mlflow():
             else:
                 stage = "prod"
                 
-            print("Dtermination du stage")    
+            print("Determination du stage")    
             # mise à jour des tags de prod et candidate
             if stage == "candidate" and candidate_run is None:
                 print("pas de modification de stage")
                 pass
-            elif stage == "candidate" and candidate_run is not None:
+            elif stage == "candidate" and candidate_run is not None and len(candidate_run) > 0:
                 print("Passage de prod à archived et de candidate à prod avec nouveau modèle candidat")
                 client.set_tag(prod_run[0].info.run_id, "stage", "archived")
                 client.set_tag(candidate_run[0].info.run_id, "stage", "prod")
@@ -168,7 +175,7 @@ def train_model_mlflow():
                     version=candidate_model[0].version,
                     stage="Production"
                 )
-            elif stage == "rejected" and candidate_run is not None:
+            elif stage == "rejected" and candidate_run is not None and len(candidate_run) > 0:
                 print("Passage de prod à archived et de candidate à prod avec reject du nouveau modèle")
                 client.set_tag(prod_run[0].info.run_id, "stage", "archived")
                 client.set_tag(candidate_run[0].info.run_id, "stage", "prod")
@@ -248,8 +255,8 @@ def train_model_mlflow():
             plt.plot(model.history.history.get('val_loss', []), label='val_loss')
             plt.legend()
             plt.title("Training Loss")
-            plt.savefig("./metrics/training_loss.png")
-            mlflow.log_artifact("./metrics/training_loss.png", artifact_path="training_history")
+            plt.savefig("metrics/training_loss.png")
+            mlflow.log_artifact("metrics/training_loss.png", artifact_path="training_history")
             
             # conversion du batch pour la signature
             X_test = []
@@ -265,8 +272,8 @@ def train_model_mlflow():
             signature = infer_signature(X_test, y_test)
             
             # log des metrics en csv
-            pd.DataFrame(classif).to_csv("./metrics/classification_report.csv")
-            pd.DataFrame(conf).to_csv("./metrics/confusion_matrix.csv")
+            pd.DataFrame(classif).to_csv("metrics/classification_report.csv")
+            pd.DataFrame(conf).to_csv("metrics/confusion_matrix.csv")
 
             print("logs des artifacts dans mlflow")
             mlflow.log_artifact("metrics/classification_report.csv", artifact_path="classification_report")
@@ -276,11 +283,11 @@ def train_model_mlflow():
             plt.figure(figsize=(5,4))
             sns.heatmap(conf, annot=True, fmt='d', cmap='Blues')
             plt.title("Confusion Matrix")
-            plt.savefig("./metrics/confusion_matrix.png")
+            plt.savefig("metrics/confusion_matrix.png")
             mlflow.log_artifact("metrics/confusion_matrix.png", artifact_path="confusion_matrix")
             
             fig = plot_classification_report(classif)
-            fig.savefig("./metrics/classification_report_plot.png")
+            fig.savefig("metrics/classification_report_plot.png")
             mlflow.log_artifact("metrics/classification_report_plot.png", artifact_path="classification_report")
             plt.close(fig)
             

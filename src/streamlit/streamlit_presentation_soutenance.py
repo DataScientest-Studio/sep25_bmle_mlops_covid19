@@ -3,6 +3,7 @@ Présentation de soutenance — Projet COVID-19 Radiography (MLOps).
 Application Streamlit structurée pour jury de fin d'études / professeur MLOps.
 """
 import sys
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -41,7 +42,7 @@ def _show_diagram(png_bytes: bytes):
 
 # --- Config page ---
 st.set_page_config(
-    page_title="Soutenance — COVID-19 Radiography MLOps",
+    page_title="Soutenance MLOps — Analyse de radiographies pulmonaires Covid-19",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -84,6 +85,7 @@ SLIDES = [
     "Titre",
     "Introduction",
     "Objectifs du projet",
+    "Architecture technique Globale",
     "Données & Dataset",
     "Modèle & Architecture",
     "Pipeline d'entraînement",
@@ -94,13 +96,17 @@ SLIDES = [
     "Démo clinique (prédiction)",
     "Conclusion",
     "Perspectives",
+    "Fin"
 ]
 
 
 def slide_titre():
-    st.markdown("# Soutenance de fin d'études")
+
     st.markdown("## Classification de radiographies thoraciques COVID-19 — Pipeline MLOps")
     st.markdown("---")
+    cols = st.columns([1,4,1])
+    with cols[1]:
+        st.image("src/streamlit/images/MLops covid.png" if os.path.exists("src/streamlit/images/MLops covid.png") else None)
     st.markdown("""
 Projet réalisé dans le cadre de la formation, portant sur l'**aide au diagnostic** de signes radiologiques du COVID-19 à partir de radiographies thoraciques, avec une mise en œuvre complète des pratiques **MLOps** : pipeline reproductible, API, application clinique et boucle de feedback.
     """)
@@ -152,6 +158,10 @@ Le modèle n’est pas seulement sauvegardé localement : il est exposé via une
 Enfin, une **interface clinique** (Streamlit) permet à un médecin de charger une image, de voir la prédiction et le Grad-CAM, puis de saisir son **propre diagnostic** et un commentaire. Ces retours sont enregistrés dans une base (Supabase), et le diagnostic peut être utilisé pour mettre à jour le label de l’image dans le dataset. Ainsi, le système s’enrichit au fil de l’usage et peut servir à de futurs ré-entraînements.
     """)
 
+def slide_architecture():
+    st.markdown("# Architecture technique globale")
+    st.markdown("---")
+    st.image("src/streamlit/images/Architecture technique.png" if os.path.exists("src/streamlit/images/Architecture technique.png") else None)
 
 def slide_donnees():
     st.markdown("# Data Engineering & Governance")
@@ -159,12 +169,12 @@ def slide_donnees():
 
     st.markdown("### Acquisition & Versionnement des données")
     st.markdown("""
-    Les données initiales proviennent du COVID-19 Radiography Dataset (Kaggle).
-    Le téléchargement est automatisé via l’API Kaggle avec gestion sécurisée des credentials.
+    Les données initiales proviennent du **COVID-19** Radiography Dataset (Kaggle).
+    Le téléchargement est automatisé via l’API **Kaggle** avec gestion sécurisée des credentials.
 
     Chaque run d’entraînement est associé à une configuration précise,
-    et les métadonnées dataset sont tracées dans MLflow afin d’assurer
-    la reproductibilité complète des expérimentations.
+    et les métadonnées dataset sont tracées dans **MLflow** afin d’assurer
+    la **reproductibilité** complète des expérimentations.
     """)
 
     st.markdown("### Pipeline de préparation reproductible")
@@ -176,7 +186,7 @@ def slide_donnees():
     - de l’augmentation d’images,
     - une normalisation cohérente.
 
-    Ces étapes sont versionnées et tracées dans MLflow :
+    Ces étapes sont versionnées et tracées dans **MLflow** :
     paramètres, métriques, artefacts.
     On garantit ainsi qu’un modèle peut être reconstruit à partir d’un run donné.
     """)
@@ -185,11 +195,11 @@ def slide_donnees():
     st.markdown("""
     En production, les images et labels sont stockés dans Supabase.
 
-    Chaque prédiction validée via l’endpoint /feedback
+    Chaque prédiction validée via l’endpoint **/feedback**
     alimente la base et déclenche potentiellement un ré-entraînement planifié.
 
     On met ainsi en place une boucle d’amélioration continue :
-    Data → Model → Feedback → Data.
+    **Data → Model → Feedback → Data → **.
     """)
 
     _show_diagram(diagram_chargement_dataset())
@@ -202,7 +212,7 @@ def slide_modele():
 
     st.markdown("### Architecture & Standardisation")
     st.markdown("""
-    Le modèle repose sur EfficientNetV2-B0, encapsulé dans une classe dédiée.
+    Le modèle repose sur **EfficientNetV2-B0**, encapsulé dans une classe dédiée.
 
     Le prétraitement et l’augmentation sont intégrés au graphe,
     ce qui garantit une cohérence totale entre entraînement et inférence.
@@ -210,24 +220,24 @@ def slide_modele():
 
     st.markdown("### Tracking avec MLflow")
     st.markdown("""
-    Chaque entraînement est loggé dans MLflow :
+    Chaque entraînement est loggé dans **MLflow** :
 
     - hyperparamètres,
     - métriques (accuracy, recall),
     - artefacts (modèle, courbes, metrics complet),
     - version du dataset.
 
-    MLflow agit ici comme :
+    **MLflow** agit ici comme :
     - registre d’expérimentations,
-    - outil de comparaison de runs,
-    - Model Registry pour promotion en production.
+    - outil de comparaison de **runs**,
+    - Model **Registry** pour promotion en production.
     """)
 
     st.markdown("### Gouvernance & Versioning")
     st.markdown("""
     Les modèles sont versionnés automatiquement.
 
-    Un modèle validé peut être promu dans le Model Registry MLflow,
+    Un modèle validé peut être promu dans le **Model Registry MLflow**,
     ce qui permet :
     - rollback,
     - AB test,
@@ -242,9 +252,9 @@ def slide_pipeline_entrainement():
 
     st.markdown("### Orchestration avec Airflow")
     st.markdown("""
-    Le pipeline d’entraînement est orchestré via Apache Airflow.
+    Le pipeline d’entraînement est orchestré via **Apache Airflow**.
 
-    Un DAG structure les étapes :
+    Un **DAG** structure les étapes :
     1. Extraction / préparation des données
     2. Entraînement
     3. Logging MLflow
@@ -260,7 +270,7 @@ def slide_pipeline_entrainement():
     st.markdown("### Containerisation avec Docker")
     st.markdown("""
     L’ensemble des composants (API, entraînement, MLflow, Airflow)
-    est containerisé avec Docker.
+    est containerisé avec **Docker**.
 
     Cela garantit :
     - portabilité,
@@ -272,9 +282,9 @@ def slide_pipeline_entrainement():
     st.markdown("""
     Le pipeline peut être déclenché :
     - automatiquement via Airflow,
-    - manuellement via l’endpoint /train.
+    - manuellement via l’endpoint **/train**.
 
-    On est donc sur un système automatisé,
+    On est donc sur un système **automatisé**,
     et non sur un entraînement manuel type notebook.
     """)
     
@@ -287,7 +297,7 @@ def slide_api():
 
     st.markdown("### API & Serving")
     st.markdown("""
-    Le modèle est exposé via FastAPI,
+    Le modèle est exposé via **FastAPI**,
     containerisé et déployable derrière un reverse proxy.
 
     Les endpoints couvrent :
@@ -299,14 +309,14 @@ def slide_api():
 
     st.markdown("### Monitoring avec Prometheus & Grafana")
     st.markdown("""
-    Les métriques applicatives sont exposées à Prometheus :
+    Les métriques applicatives sont exposées à **Prometheus** :
 
     - latence des prédictions,
     - nombre de requêtes,
     - metrics d'entrainement
     - statut du modèle actif.
 
-    Grafana permet de visualiser ces métriques
+    **Grafana** permet de visualiser ces métriques
     et de surveiller la santé globale du système.
 
     On peut ainsi détecter :
@@ -319,11 +329,11 @@ def slide_api():
     st.markdown("""
     Nous avons donc trois niveaux de supervision :
 
-    - MLflow → performance modèle
-    - Airflow → santé des pipelines
-    - Prometheus/Grafana → monitoring runtime
+    - **MLflow** → performance modèle
+    - **Airflow** → santé des pipelines
+    - **Prometheus/Grafana** → monitoring runtime
 
-    Cela transforme le projet en système MLOps complet,
+    Cela transforme le projet en système **MLOps** complet,
     prêt pour un environnement de production réel.
     """)
 
@@ -438,8 +448,12 @@ Plusieurs évolutions permettraient d’aller plus loin en production et en MLOp
     st.markdown("**Monitoring en production.** Mettre en place un suivi des **métriques opérationnelles** : latence des prédictions, taux d’erreur, distribution des classes prédites. En cas de dégradation (dérive des performances, pics de latence), des alertes permettraient d’investiguer ou de déclencher un ré-entraînement. Des outils comme **MLflow** ou des dashboards dédiés peuvent centraliser ces métriques.")
     st.markdown("**A/B testing.** Comparer en production **plusieurs versions** du modèle (par exemple ancien vs nouveau après ré-entraînement) sur une fraction du trafic, afin de valider les gains en précision ou en robustesse avant une bascule complète. Cela nécessite un routage côté API ou un mécanisme de feature flags.")
     st.markdown("**Sécurisation.** Renforcer la **sécurité** de l’API et de l’application clinique : **authentification** (tokens JWT, OAuth2), **audit** des accès et des appels, **contrôle des permissions** (rôles utilisateur, restriction des endpoints sensibles comme /train). Le fichier **secrets.yaml** et les variables d’environnement restent la base pour les credentials ; une intégration avec un coffre-fort (Vault, secrets cloud) est une piste pour la production.")
-    st.markdown("---")
-    st.success("Merci pour votre attention. Questions bienvenues.")
+    st.image("src/streamlit/images/Life_Cycle.png" if os.path.exists("src/streamlit/images/Life_Cycle.png") else None)
+    
+def slide_fin():
+    cols = st.columns([1,4,1])
+    with cols[1]:
+        st.image("src/streamlit/images/thanks.png" if os.path.exists("src/streamlit/images/thanks.png") else None)
 
 
 # --- Dispatcher ---
@@ -447,6 +461,7 @@ RENDER = {
     "Titre": slide_titre,
     "Introduction": slide_introduction,
     "Objectifs du projet": slide_objectifs,
+    "Architecture technique Globale":slide_architecture,
     "Données & Dataset": slide_donnees,
     "Modèle & Architecture": slide_modele,
     "Pipeline d'entraînement": slide_pipeline_entrainement,
@@ -457,12 +472,14 @@ RENDER = {
     "Stack technique": slide_stack,
     "Conclusion": slide_conclusion,
     "Perspectives": slide_perspectives,
+    "Fin":slide_fin
 }
 
 
 def main():
-    st.sidebar.title("Soutenance")
-    st.sidebar.markdown("COVID-19 Radiography — MLOps")
+    st.sidebar.image("src/streamlit/images/logo liora.png", width="stretch")
+    st.sidebar.title("Soutenance MLOps")
+    st.sidebar.markdown("Analyse de radiographies pulmonaires Covid-19")
     st.sidebar.markdown("---")
     choice = st.sidebar.radio(
         "Navigation",

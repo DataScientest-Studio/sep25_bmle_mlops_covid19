@@ -1,21 +1,18 @@
-from src.models.train_model_mlflow import train_model_mlflow
-from src.settings import S3Settings
-from src.utils.s3_utils import upload_dataset_and_generate_csv
+from pathlib import Path
+from src.utils.data_utils import organize_custom_dataset
 
 
 if __name__ == "__main__":
     
-    train_model_mlflow()
-    
-    """settings = S3Settings("secrets.yaml")
-    
-    bucket_name, access_key, secret_key, b2_endpoint = settings.s3_access
-
-    upload_dataset_and_generate_csv(
-        bucket_name=bucket_name,
-        access_key=access_key,
-        secret_key=secret_key,
-        local_root="./data/COVID-19_Radiography_Dataset",
-        s3_prefix="dataset",
-        output_csv="dataset.csv"
-    )"""
+    BASE_DIR = Path(__file__).resolve().parent
+    DATA_DIR = BASE_DIR / "data"
+    DATASET_DIR_PATH = DATA_DIR / "structured_dataset"
+    ORIGINAL_DATASET_PATH = DATA_DIR / "COVID-19_Radiography_Dataset_init"
+    print(DATA_DIR)
+    params = {
+                    "folderA": 300 // 3,
+                    "folderB": 300 // 3,
+                    "folderC": 300 // 3,
+                    "folderD": 300 
+                }
+    organize_custom_dataset(dataset_path=str(ORIGINAL_DATASET_PATH), output_root=str(DATASET_DIR_PATH), images_by_folder=params, replace=True)

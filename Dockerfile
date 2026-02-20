@@ -26,6 +26,7 @@ COPY ./models .
 COPY models.dvc .
 COPY ./.dvc .
 COPY requirements.txt .
+COPY secrets.yaml .
 RUN apt-get update && apt-get install -y libgl1
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
@@ -43,5 +44,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_PORT=8501
-EXPOSE 8501
-CMD ["streamlit", "run", "src/streamlit/streamlit_clinic_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+EXPOSE 8502
+CMD ["streamlit", "run", "src/streamlit/streamlit_clinic_app.py", "--server.address=0.0.0.0", "--server.port=8502"]
