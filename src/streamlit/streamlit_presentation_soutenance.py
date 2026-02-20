@@ -84,7 +84,7 @@ st.markdown("""
 SLIDES = [
     "Titre",
     "Introduction",
-    "Objectifs du projet",
+    "Le projet",
     "Architecture technique Globale",
     "Données & Dataset",
     "Modèle & Architecture",
@@ -128,10 +128,16 @@ La présentation est structurée en **trois parties**. **(1) Introduction et cad
 Cette structure permet de passer du **cadrage** et des **choix techniques** à la **réalisation concrète** (pipeline, API, interface, feedback), puis au **bilan** et aux **évolutions** possibles.
     """)
     st.markdown("### Architecture globale du projet")
-    _show_diagram(diagram_architecture())
-
+    _show_diagram(diagram_architecture())  
 
 def slide_objectifs():
+    st.markdown("# Présentation de l'équipe")
+    st.markdown("---")
+    st.markdown("""
+    - Marouane : ingénieur spatial reconverti\n
+    - Kevin : 19 ans ingénieur full-stack\n
+    - Narifidy : compétences transverses, vient de la partie Business
+    """)
     st.markdown("# Objectifs du projet")
     st.markdown("---")
     st.markdown("""
@@ -460,7 +466,7 @@ def slide_fin():
 RENDER = {
     "Titre": slide_titre,
     "Introduction": slide_introduction,
-    "Objectifs du projet": slide_objectifs,
+    "Le projet": slide_objectifs,
     "Architecture technique Globale":slide_architecture,
     "Données & Dataset": slide_donnees,
     "Modèle & Architecture": slide_modele,
