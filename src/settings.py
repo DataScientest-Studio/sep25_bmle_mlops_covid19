@@ -41,7 +41,9 @@ class S3Settings:
     @property
     def s3_access(self) -> tuple:
         # Accepter "S3" ou "s3" (sensible à la casse dans le YAML)
+        print(f"{self._secrets = }")
         s3 = self._secrets.get("S3") or self._secrets.get("s3")
+        print(f"{s3 = }")
         if not s3:
             raise KeyError(
                 "Cle 'S3' ou 's3' manquante dans le fichier de secrets. "

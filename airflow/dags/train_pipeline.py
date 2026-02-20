@@ -11,7 +11,7 @@ def trigger_training():
 with DAG(
     dag_id="covid19_training_pipeline",
     start_date=datetime(2024, 1, 1),
-    schedule_interval=timedelta(minutes=30), 
+    schedule_interval=timedelta(hours=2), 
     catchup=False
 ) as dag:
 
