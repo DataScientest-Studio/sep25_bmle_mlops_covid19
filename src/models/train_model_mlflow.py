@@ -308,7 +308,7 @@ def train_model_mlflow():
             print("registring du model")
             # Alimentation du model dans MLFlow
             mlflow.set_tag("type", "model")
-            mlflow.set_tag("status", stage)
+            mlflow.set_tag("stage", stage)
             mlflow.keras.log_model(model.model, name="model", signature=signature)
             model_uri = "runs:/{}/model".format(run.info.run_id)
             model_version = mlflow.register_model(model_uri, model_name)
