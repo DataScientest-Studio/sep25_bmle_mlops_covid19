@@ -69,40 +69,13 @@ def train_model_mlflow():
     with mlflow.start_run(run_name=f"Training_{now}") as run:
         
         client = mlflow.MlflowClient()
-        ########################## éléments pour simuler un scheduleur avec augmantation du dataset ##############        
-        with open("training_dataset_size.txt", "r") as f:
-            nb_case = f.read()
-        
-        print(f"{nb_case = }")
-        epochs = 10
-        
-        # tirage aléatoire pour savoir de combien on augmente de dataset
-        x = random.randint(0, 20)
 
-        nb_case = int(nb_case) + (x * 3)
-        with open("training_dataset_size.txt", "w") as f:
-            f.write(str(nb_case))
-            
-        sample_ratio = (21000 / (nb_case * 2)) / 100
-            
-        params = {
-                    "Normal": nb_case // 3,
-                    "Lung_Opacity": nb_case // 3,
-                    "Viral Pneumonia": nb_case // 3,
-                    "COVID": nb_case 
-                }
-            
-        organize_custom_dataset(dataset_path=str(DATA_DIR / ORIGINAL_DATASET_NAME), output_root=str(DATA_DIR / DATASET_DIR_NAME), images_by_folder=params, replace=True)
-        ###########################################################################################################
-        print(f"{nb_case = }")
         if training_parameters:
             # alimentation des paramêtres d'entrainements
-            print("Log des parametres")
             log_training_parameters(training_parameters)
             
-            print("load data from S3")
-            #model.load_data_from_s3(cache_dir)
-            model.load_data()
+            print("Chargement des données depuis le S3")
+            model.load_data_from_s3(cache_dir)
             
             mlflow.log_param("oversampling_strategy", "metadata_duplication")
             mlflow.log_param("augmentation_on_oversample_only", True)
@@ -116,7 +89,7 @@ def train_model_mlflow():
             
             print("entrainement")
             # entrainement
-            model.fit(epochs=epochs)
+            model.fit(epochs=200)
             
             # log du temps d'entrainement
             duration = time.time() - start_time
@@ -134,12 +107,12 @@ def train_model_mlflow():
                 experiment_ids=["1"],
                 filter_string='tags.stage = "prod"'
             )
-            print(f"{prod_run = }")
+
             candidate_run = client.search_runs(
                 experiment_ids=["1"],
                 filter_string='tags.stage = "candidate"'
             )
-            print(f"{candidate_run = }")
+
             print("Récupération des metrics d'entrainement")
             if training_log_prod:
                 if classif["1"]["recall"] > training_log_prod["class_1_recall"]:
@@ -203,18 +176,18 @@ def train_model_mlflow():
             print("extraction des metrics d'entrainement")
             # Récupération des métrics
             try:
-                class_0_precision = float(classif["0"]["precision"]) * sample_ratio
-                class_0_recall = float(classif["0"]["recall"]) * sample_ratio
-                class_0_f1 = float(classif["0"]["f1-score"]) * sample_ratio
+                class_0_precision = float(classif["0"]["precision"])
+                class_0_recall = float(classif["0"]["recall"])
+                class_0_f1 = float(classif["0"]["f1-score"])
             except:
                 class_0_precision = 0.0
                 class_0_recall = 0.0
                 class_0_f1 = 0.0
                 
             try:
-                class_1_precision = float(classif["1"]["precision"]) * sample_ratio
-                class_1_recall = float(classif["1"]["recall"]) * sample_ratio
-                class_1_f1 = float(classif["1"]["f1-score"]) * sample_ratio
+                class_1_precision = float(classif["1"]["precision"])
+                class_1_recall = float(classif["1"]["recall"])
+                class_1_f1 = float(classif["1"]["f1-score"])
             except:
                 class_1_precision = 0.0
                 class_1_recall = 0.0
@@ -313,8 +286,7 @@ def train_model_mlflow():
             model_uri = "runs:/{}/model".format(run.info.run_id)
             model_version = mlflow.register_model(model_uri, model_name)
             
-            if stage == "prod":
-                                
+            if stage == "prod":       
                 client.transition_model_version_stage(
                         name=model_name,
                         version=model_version.version,
@@ -326,7 +298,7 @@ def train_model_mlflow():
                 client.transition_model_version_stage(
                         name=model_name,
                         version=model_version.version,
-                        stage="Staging",
+                        stage="candidate",
                         archive_existing_versions=True
                     )
  
