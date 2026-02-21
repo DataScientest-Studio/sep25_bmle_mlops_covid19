@@ -84,7 +84,7 @@ st.markdown("""
 SLIDES = [
     "Titre",
     "Introduction",
-    "Objectifs du projet",
+    "Le projet",
     "Architecture technique Globale",
     "Données & Dataset",
     "Modèle & Architecture",
@@ -128,10 +128,16 @@ La présentation est structurée en **trois parties**. **(1) Introduction et cad
 Cette structure permet de passer du **cadrage** et des **choix techniques** à la **réalisation concrète** (pipeline, API, interface, feedback), puis au **bilan** et aux **évolutions** possibles.
     """)
     st.markdown("### Architecture globale du projet")
-    _show_diagram(diagram_architecture())
-
+    _show_diagram(diagram_architecture())  
 
 def slide_objectifs():
+    st.markdown("# Présentation de l'équipe")
+    st.markdown("---")
+    st.markdown("""
+    - Marouane : ingénieur spatial reconverti\n
+    - Kevin : 19 ans ingénieur full-stack\n
+    - Narifidy : compétences transverses, vient de la partie Business
+    """)
     st.markdown("# Objectifs du projet")
     st.markdown("---")
     st.markdown("""
@@ -444,10 +450,13 @@ def slide_perspectives():
     st.markdown("""
 Plusieurs évolutions permettraient d’aller plus loin en production et en MLOps.
     """)
-    st.markdown("**CI/CD et ré-entraînement.** Déclencher l’entraînement automatiquement selon des critères définis : détection de **drift** des données (changement de distribution des entrées), atteinte d’un **volume de feedback** suffisant, ou exécution selon un **planning** (par exemple hebdomadaire). L’API **POST /train** est déjà prête à être appelée par un pipeline CI/CD (GitHub Actions, GitLab CI, Jenkins, etc.) pour produire et versionner de nouveaux modèles.")
-    st.markdown("**Monitoring en production.** Mettre en place un suivi des **métriques opérationnelles** : latence des prédictions, taux d’erreur, distribution des classes prédites. En cas de dégradation (dérive des performances, pics de latence), des alertes permettraient d’investiguer ou de déclencher un ré-entraînement. Des outils comme **MLflow** ou des dashboards dédiés peuvent centraliser ces métriques.")
+    st.markdown("**CI/CD.** Assurer l’intégration continue et la mise en production des services : tests automatiques, build des images Docker et déploiement. (**Github Actions, jenkins, XLR/XLD,...**)")    
+    st.markdown("**Test unitaires.** Implémenter des test unitaires automatisées permettant de vérifier la non régression des composants lors de nouvelles livraisons. (**JUnit, Sonar**)")
     st.markdown("**A/B testing.** Comparer en production **plusieurs versions** du modèle (par exemple ancien vs nouveau après ré-entraînement) sur une fraction du trafic, afin de valider les gains en précision ou en robustesse avant une bascule complète. Cela nécessite un routage côté API ou un mécanisme de feature flags.")
+    st.markdown("**Scalabilité.** Permettre au système de s'adapter au variation de charge. (**Kubernetes**)")
+    st.markdown("**Data drifting.** Assurer une surveillance des données afin d'anticiper une dérive éventuellement et pouvoir agir en conséquence. (**Evidently**)")
     st.markdown("**Sécurisation.** Renforcer la **sécurité** de l’API et de l’application clinique : **authentification** (tokens JWT, OAuth2), **audit** des accès et des appels, **contrôle des permissions** (rôles utilisateur, restriction des endpoints sensibles comme /train). Le fichier **secrets.yaml** et les variables d’environnement restent la base pour les credentials ; une intégration avec un coffre-fort (Vault, secrets cloud) est une piste pour la production.")
+    st.markdown("**UX/UI.** Rendre l'application clinic plus ergonomique et plus simple d'utilisation par exemple en automatisant les prédictions.")
     st.image("src/streamlit/images/Life_Cycle.png" if os.path.exists("src/streamlit/images/Life_Cycle.png") else None)
     
 def slide_fin():
@@ -460,7 +469,7 @@ def slide_fin():
 RENDER = {
     "Titre": slide_titre,
     "Introduction": slide_introduction,
-    "Objectifs du projet": slide_objectifs,
+    "Le projet": slide_objectifs,
     "Architecture technique Globale":slide_architecture,
     "Données & Dataset": slide_donnees,
     "Modèle & Architecture": slide_modele,
