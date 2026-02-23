@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import uuid
 import cv2
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, Form, HTTPException, UploadFile, File
 import httpx
 import numpy as np
 from typing import Optional
@@ -57,21 +57,15 @@ async def predict_with_gradcam_endpoint(
         result["image_base64"] = base64.b64encode(image_bytes).decode("ascii")
         if save_to_dataset:
             secrets_path = _get_secrets_path()
-            print(f"{secrets_path = }")
             if secrets_path.exists():
                 image_url = None
                 storage_error = None
                 storage_error_saved = None
-                print("lets try!!")
                 try:
-                    print("init S3Settings")
                     s3_settings = S3Settings(str(secrets_path))
-                    print("s3_access")
                     bucket_name, access_key, secret_key, b2_endpoint = s3_settings.s3_access
-                    print(f"{bucket_name = }, {access_key = }, {secret_key =}")
                     if bucket_name and access_key and secret_key:
                         ext = (Path(file.filename or "").suffix or ".png").lstrip(".").lower()
-                        print(f"{ext = }")
                         if ext not in ("png", "jpg", "jpeg"):
                             ext = "png"
                         image_url = upload_feedback_image(
@@ -84,7 +78,7 @@ async def predict_with_gradcam_endpoint(
                         )
                 except (KeyError, FileNotFoundError) as e:
                     print("erreur:",e)
-                print(f"{image_url = }")
+
                 if not image_url:
                     db_settings = DatabaseSettings(str(secrets_path))
                     api_url, api_key = db_settings.database_url
@@ -100,7 +94,7 @@ async def predict_with_gradcam_endpoint(
                     image_url, storage_error = _supabase_storage_upload(
                         base_url, api_key, "images", object_path, image_bytes, f"image/{ext}"
                     )
-                print(f"{storage_error = }")
+
                 # Fallback si Storage a échoué : stocker l'image en data URL (à éviter : configurer Storage pour avoir de vraies URLs)
                 storage_error_saved = storage_error  # garder pour l'afficher à l'utilisateur
                 if not image_url and image_bytes and len(image_bytes) <= 1_000_000:
@@ -119,7 +113,7 @@ async def predict_with_gradcam_endpoint(
                         "class_type": class_type,
                         "injection_date": now,
                     }
-                    print("lets try again!!")
+
                     try:
                         inserted = await db.insert("images_dataset", img_row)
                         image_id = inserted.get("id") if isinstance(inserted, dict) else None
@@ -181,6 +175,133 @@ def _heatmap_to_base64_png(heatmap: np.ndarray) -> str:
     _, buf = cv2.imencode(".png", h_uint8)
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
+@app.post("/feedback")
+async def submit_feedback(
+    image: UploadFile = File(None),
+    predicted_class: str = Form(...),
+    diagnostic: str = Form(...),
+    comment: str = Form(""),
+    image_id: Optional[str] = Form(None),
+):
+    """
+    Enregistre l'image dans images_dataset (label = diagnostic), puis feedback avec img_id. Pas d’S3 requis (secrets.yaml).
+    """
+    try:
+        secrets_path = _get_secrets_path()
+        if not secrets_path.exists():
+            raise HTTPException(status_code=500, detail="secrets.yaml not found")
+
+        db_settings = DatabaseSettings(str(secrets_path))
+        api_url, api_key = db_settings.database_url
+        db = DatabaseAccess(api_url=api_url, api_key=api_key)
+
+        def _diag_to_class(d: str) -> str:
+            return "1" if d and d.strip().upper().startswith("COVID") and "Non" not in d else "0"
+
+        class_type = _diag_to_class(diagnostic)
+        final_image_id = None
+        _img_id = int(image_id) if image_id and str(image_id).strip().isdigit() else None
+
+        if _img_id is not None:
+            # Mise à jour du diagnostic dans images_dataset (le diagnostic fait foi, pas la prédiction)
+            updated = await db.update(
+                "images_dataset",
+                {"class_type": class_type},
+                {"id": f"eq.{_img_id}"},
+            )
+            if isinstance(updated, list) and len(updated) == 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Le diagnostic n’a pas pu être appliqué à l’image (vérifier RLS sur images_dataset ou l’id).",
+                )
+            final_image_id = _img_id
+        else:
+            # Pas d'image_id : upload S3 ou Supabase Storage, puis insert images_dataset
+            image_url = None
+            if image:
+                image_bytes = await image.read()
+                if image_bytes:
+                    ext = (Path(image.filename or "").suffix or ".png").lstrip(".").lower()
+                    if ext not in ("png", "jpg", "jpeg"):
+                        ext = "png"
+                    try:
+                        s3_settings = S3Settings(str(secrets_path))
+                        bucket_name, access_key, secret_key, b2_endpoint = s3_settings.s3_access
+                        if bucket_name and access_key and secret_key:
+                            image_url = upload_feedback_image(
+                                bucket_name=bucket_name,
+                                access_key=access_key,
+                                secret_key=secret_key,
+                                image_bytes=image_bytes,
+                                s3_prefix="feedback",
+                                extension=ext,
+                            )
+                    except (KeyError, FileNotFoundError):
+                        pass
+                    if not image_url:
+                        api_url, api_key = db_settings.database_url
+                        base_url = api_url.replace("/rest/v1", "").rstrip("/")
+                        folder = "COVID" if class_type == "1" else "Non-COVID"
+                        name = f"{folder}-{uuid.uuid4().hex}.{ext}"
+                        object_path = f"dataset/{folder}/images/{name}"
+                        print("")
+                        image_url, _ = _supabase_storage_upload(
+                            base_url, api_key, "images", object_path, image_bytes, f"image/{ext}"
+                        )
+                    if not image_url and image_bytes and len(image_bytes) <= 1_000_000:
+                        mime = "image/png" if ext == "png" else "image/jpeg"
+                        image_url = f"data:{mime};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+            if image_url:
+                now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")
+                img_row = {
+                    "image_url": image_url,
+                    "mask_url": None,
+                    "class_type": class_type,
+                    "injection_date": now,
+                }
+                try:
+                    print("try insert")
+                    inserted = await db.insert("images_dataset", img_row)
+                    print("insert OK")
+                    final_image_id = inserted.get("id") if isinstance(inserted, dict) else None
+                except httpx.HTTPStatusError as e:
+                    detail = (e.response.text or "").strip() or f"HTTP {e.response.status_code}"
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Insertion dans images_dataset impossible: {detail[:400]}",
+                    )
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Insertion images_dataset: {str(e)[:200]}")
+            # Si pas de S3 : on enregistre quand même le feedback (sans img_id)
+
+        feedback_date = datetime.utcnow().isoformat()
+        feedback_row = {
+            "predicted_class": predicted_class,
+            "diagnostic": diagnostic,
+            "comment": comment,
+            "feedback_date": feedback_date,
+        }
+        if final_image_id is not None:
+            feedback_row["img_id"] = final_image_id
+        print("await insert")
+        db = DatabaseAccess(api_url=api_url, api_key=api_key)
+        await db.insert("feedback", feedback_row)
+        print("insert ok")
+        return {"status": "ok", "image_id": final_image_id}
+    except httpx.HTTPStatusError as e:
+        detail = (e.response.text or "").strip() or f"HTTP {e.response.status_code}"
+        raise HTTPException(status_code=500, detail=f"Supabase: {detail}")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        msg = str(exc)
+        if "Expecting value" in msg or "JSON" in msg:
+            msg = "Réponse Supabase vide ou invalide. Vérifiez l’URL REST et la clé API dans secrets.yaml."
+        raise HTTPException(status_code=500, detail=msg)
+
+
 def _get_secrets_path() -> Path:
     """Chemin vers le fichier de secrets (secrets.yaml, secret.yml, etc.)."""
     candidates = ("secrets.yaml", "secrets.yml", "secret.yaml", "secret.yml")
@@ -204,6 +325,7 @@ def _supabase_storage_upload(
     Essaie multipart/form-data puis body binaire. Retourne (url_publique, None) ou (None, message_erreur).
     base_url: https://PROJECT.supabase.co (sans /rest/v1)
     """
+    print("suparbse_storage_upload")
     base_url = base_url.rstrip("/")
     url = f"{base_url}/storage/v1/object/{bucket}/{object_path}"
     auth_headers = {
@@ -216,9 +338,13 @@ def _supabase_storage_upload(
             with httpx.Client(timeout=30.0) as client:
                 if use_multipart:
                     filename = object_path.split("/")[-1]
+                    print("post 1")
                     r = client.post(url, files={"file": (filename, content, content_type)}, headers=auth_headers)
+                    print("post 1 ok")
                 else:
+                    print("post 2")
                     r = client.post(url, content=content, headers={**auth_headers, "Content-Type": content_type})
+                    print("post 2 ok")
                 r.raise_for_status()
                 return f"{base_url}/storage/v1/object/public/{bucket}/{object_path}", None
         except httpx.HTTPStatusError as e:
